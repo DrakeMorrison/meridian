@@ -85,7 +85,7 @@
     gap: 0;
     transition: opacity 0.3s ease, background 0.3s ease, backdrop-filter 0.3s ease;
   }
-  body:hover .app:not(:hover) { opacity: 0; }
+  body.has-graph:hover .app:not(:hover) { opacity: 0; }
   .app:hover {
     background: color-mix(in srgb, var(--bg) 50%, transparent);
     backdrop-filter: blur(3px);
@@ -908,6 +908,7 @@ function renderLog() {
   const count = document.getElementById('log-count');
   const statsRow = document.getElementById('stats-row');
 
+  document.body.classList.toggle('has-graph', logs.length >= 2);
   count.textContent = logs.length + ' ' + (logs.length === 1 ? 'entry' : 'entries');
 
   if (logs.length === 0) {
