@@ -1219,14 +1219,18 @@ canvas.addEventListener('click', () => {
       const el = document.getElementById('entry-' + entry.id);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setTimeout(() => {
-          el.style.setProperty('--entry-halo', haloColor);
-          el.classList.add('log-entry-highlight');
-          el.addEventListener('animationend', () => {
-            el.classList.remove('log-entry-highlight');
-            el.style.animation = 'none';
-          }, { once: true });
-        }, 100);
+        const observer = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting) {
+            observer.disconnect();
+            el.style.setProperty('--entry-halo', haloColor);
+            el.classList.add('log-entry-highlight');
+            el.addEventListener('animationend', () => {
+              el.classList.remove('log-entry-highlight');
+              el.style.animation = 'none';
+            }, { once: true });
+          }
+        }, { threshold: 0.8 });
+        observer.observe(el);
       }
     }, 350);
   } else {
