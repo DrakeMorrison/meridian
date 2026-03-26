@@ -29,11 +29,9 @@
     --danger: #fb4934;
     --danger-dim: #cc241d;
     --info: #83a598;
-    --orange: #fe8019;
     --mono: 'IBM Plex Mono', monospace;
     --display: 'Cinzel', serif;
     --data: 'Cormorant Garamond', serif;
-    --sans: 'IBM Plex Mono', monospace;
   }
 
   body.light {
@@ -51,11 +49,10 @@
     --danger: #cc241d;
     --danger-dim: #9d0006;
     --info: #458588;
-    --orange: #d65d0e;
   }
 
   body {
-    font-family: var(--sans);
+    font-family: var(--mono);
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
@@ -97,7 +94,7 @@
   #graph-tooltip .tt-delta { margin-top: 0.15rem; }
   #graph-tooltip .tt-delta.over  { color: var(--danger); }
   #graph-tooltip .tt-delta.under { color: var(--accent2); }
-  #graph-tooltip .tt-delta.exact { color: var(--fg-dim, var(--muted)); }
+  #graph-tooltip .tt-delta.exact { color: var(--muted); }
 
   .app {
     position: relative;
@@ -187,16 +184,25 @@
   }
   .time-row .input-block { flex: 1; margin-bottom: 0; }
 
-  .start-btn {
+  .btn {
     font-family: var(--mono);
+    font-size: 10px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .btn:hover { color: var(--text); border-color: var(--muted); }
+
+  .start-btn {
     font-size: 11px;
     letter-spacing: 0.2em;
     padding: 0.6rem 1.4rem;
     background: var(--accent2);
     color: #1d2021;
     border: none;
-    cursor: pointer;
-    text-transform: uppercase;
     transition: opacity 0.15s, transform 0.1s;
     white-space: nowrap;
     flex-shrink: 0;
@@ -279,15 +285,11 @@
 
   .stop-btn {
     margin-top: 2rem;
-    font-family: var(--mono);
     font-size: 11px;
     letter-spacing: 0.2em;
     padding: 0.75rem 2.5rem;
-    background: transparent;
     color: var(--danger);
-    border: 1px solid var(--danger);
-    cursor: pointer;
-    text-transform: uppercase;
+    border-color: var(--danger);
     transition: background 0.15s, color 0.15s;
   }
   .stop-btn:hover { background: var(--danger); color: #000; }
@@ -366,19 +368,11 @@
   }
 
   .btn-ghost {
-    font-family: var(--mono);
     font-size: 11px;
     letter-spacing: 0.15em;
     padding: 0.5rem 1rem;
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    cursor: pointer;
-    text-transform: uppercase;
-    transition: color 0.15s, border-color 0.15s;
     flex: 1;
   }
-  .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
 
   .section-divider {
     height: 1px;
@@ -407,18 +401,9 @@
   }
 
   .btn-tiny {
-    font-family: var(--mono);
-    font-size: 10px;
     letter-spacing: 0.1em;
     padding: 0.3rem 0.7rem;
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    cursor: pointer;
-    text-transform: uppercase;
-    transition: color 0.15s, border-color 0.15s;
   }
-  .btn-tiny:hover { color: var(--text); border-color: var(--muted); }
   .btn-tiny.accent { color: var(--accent2); border-color: var(--accent2-dim); }
   .btn-tiny.accent:hover { background: var(--accent2); color: #1d2021; }
 
@@ -477,6 +462,9 @@
   .log-entry:hover .entry-actions,
   .log-entry:focus-within .entry-actions { opacity: 1; }
   .log-entry-editing { grid-template-columns: 1fr; }
+  .btn-tiny.danger { color: var(--danger); border-color: var(--danger-dim); }
+  .edit-input-task { font-size: 0.95rem; margin-bottom: 0.5rem; }
+  .edit-input-num  { font-size: 0.9rem; }
   .log-edit-label {
     font-family: var(--display);
     font-size: 10px;
@@ -584,19 +572,11 @@
   }
 
   .theme-btn {
-    font-family: var(--mono);
-    font-size: 10px;
     letter-spacing: 0.15em;
     padding: 0.3rem 0.7rem;
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    cursor: pointer;
-    text-transform: uppercase;
     transition: color 0.2s, border-color 0.2s, background 0.2s;
     line-height: 1.4;
   }
-  .theme-btn:hover { color: var(--text); border-color: var(--muted); }
   .key { text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 2px; }
 
   footer {
@@ -623,7 +603,7 @@
     <div class="logo">MERIDIAN</div>
     <div style="display:flex;align-items:center;gap:0.75rem;">
       <div class="header-sub">time · calibration</div>
-<button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9788; Light</button>
+<button class="btn theme-btn" id="theme-btn" onclick="toggleTheme()">&#9788; Light</button>
     </div>
   </header>
 
@@ -637,7 +617,7 @@
         <div class="section-label">Estimate (min)</div>
         <input type="number" id="estimate-input" placeholder="30" min="0.1" step="0.5" />
       </div>
-      <button class="start-btn" id="start-btn" onclick="startTimer()">START ↵</button>
+      <button class="btn start-btn" id="start-btn" onclick="startTimer()">START ↵</button>
     </div>
   </div>
 
@@ -649,7 +629,7 @@
       <div class="predicted-marker" id="predicted-marker"></div>
     </div>
     <div class="timer-meta" id="timer-meta">est. — min</div>
-    <button class="stop-btn" onclick="stopTimer()"><span class="key">S</span>TOP</button>
+    <button class="btn stop-btn" onclick="stopTimer()"><span class="key">S</span>TOP</button>
   </div>
 
   <div class="result-panel" id="result-panel">
@@ -675,7 +655,7 @@
       </div>
     </div>
     <div class="result-actions">
-      <button class="btn-ghost" onclick="clearResult()"><span class="key">N</span>EW TASK</button>
+      <button class="btn btn-ghost" onclick="clearResult()"><span class="key">N</span>EW TASK</button>
     </div>
   </div>
 
@@ -686,10 +666,10 @@
         <div class="log-count" id="log-count">0 entries</div>
       </div>
       <div class="log-actions">
-        <button class="btn-tiny accent" onclick="exportLog()">↓ <span class="key">E</span>xport CSV</button>
-        <button class="btn-tiny accent" onclick="document.getElementById('import-input').click()">↑ <span class="key">I</span>mport CSV</button>
+        <button class="btn btn-tiny accent" onclick="exportLog()">↓ <span class="key">E</span>xport CSV</button>
+        <button class="btn btn-tiny accent" onclick="document.getElementById('import-input').click()">↑ <span class="key">I</span>mport CSV</button>
         <input type="file" id="import-input" accept=".csv" style="display:none" onchange="importCSV(this)">
-        <button class="btn-tiny" onclick="clearLog()"><span class="key">C</span>lear</button>
+        <button class="btn btn-tiny" onclick="clearLog()"><span class="key">C</span>lear</button>
       </div>
     </div>
 
@@ -702,7 +682,7 @@
         <div class="s-val" id="stat-avg">—</div>
         <div class="s-label">Avg Delta</div>
       </div>
-<div class="stat-card">
+      <div class="stat-card">
         <div class="s-val" id="stat-bias">—</div>
         <div class="s-label">Brier Score</div>
       </div>
@@ -718,13 +698,13 @@
     </div>
     <div id="backup-settings" style="display:none">
       <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
-        <button class="btn-tiny" id="freq-daily" onclick="setBackupFreq('daily')">Daily</button>
-        <button class="btn-tiny" id="freq-weekly" onclick="setBackupFreq('weekly')">Weekly</button>
+        <button class="btn btn-tiny" id="freq-daily" onclick="setBackupFreq('daily')">Daily</button>
+        <button class="btn btn-tiny" id="freq-weekly" onclick="setBackupFreq('weekly')">Weekly</button>
       </div>
       <div class="export-note" id="backup-note"></div>
       <div class="file-handle-status" id="backup-dir-status"></div>
       <div style="margin-top:0.75rem;">
-        <button class="btn-tiny accent" onclick="runBackupNow()">&#x2193; Backup Now</button>
+        <button class="btn btn-tiny accent" onclick="runBackupNow()">&#x2193; Backup Now</button>
       </div>
     </div>
 
@@ -732,9 +712,9 @@
       <div style="font-family:var(--mono); font-size:11px; color:var(--accent2); letter-spacing:0.1em; margin-bottom:0.4rem;">BACKUP REMINDER</div>
       <div style="font-family:var(--mono); font-size:11px; color:var(--text-dim);" id="reminder-text"></div>
       <div style="display:flex; gap:0.5rem; margin-top:0.75rem;">
-        <button class="btn-tiny accent" onclick="runBackupNow()">&#x2193; Backup Now</button>
-        <button class="btn-tiny" onclick="snoozeReminder()">Remind Later</button>
-        <button class="btn-tiny" onclick="dismissReminder()">Dismiss</button>
+        <button class="btn btn-tiny accent" onclick="runBackupNow()">&#x2193; Backup Now</button>
+        <button class="btn btn-tiny" onclick="snoozeReminder()">Remind Later</button>
+        <button class="btn btn-tiny" onclick="dismissReminder()">Dismiss</button>
       </div>
     </div>
   </div>
@@ -955,27 +935,27 @@ function renderLog() {
 
   document.getElementById('stat-count').textContent = logs.length;
   document.getElementById('stat-avg').textContent = (avgDelta >= 0 ? '+' : '') + avgDelta.toFixed(1) + '%';
-document.getElementById('stat-bias').textContent = brier.toFixed(3);
+  document.getElementById('stat-bias').textContent = brier.toFixed(3);
 
   list.innerHTML = logs.map((e, i) => {
     if (i === editingIndex) {
       return `<div class="log-entry log-entry-editing">
         <div>
           <div class="log-edit-label">Task</div>
-          <input type="text" id="edit-task" value="${escHtml(e.task)}" style="font-size:0.95rem;margin-bottom:0.5rem">
+          <input type="text" id="edit-task" class="edit-input-task" value="${escHtml(e.task)}">
           <div class="log-edit-fields">
             <div>
               <div class="log-edit-label">Est. (min)</div>
-              <input type="number" id="edit-pred" value="${(e.predictedMs/60000).toFixed(2)}" min="0.01" step="0.01" style="font-size:0.9rem">
+              <input type="number" id="edit-pred" class="edit-input-num" value="${(e.predictedMs/60000).toFixed(2)}" min="0.01" step="0.01">
             </div>
             <div>
               <div class="log-edit-label">Actual (min)</div>
-              <input type="number" id="edit-actual" value="${(e.actualMs/60000).toFixed(2)}" min="0.01" step="0.01" style="font-size:0.9rem">
+              <input type="number" id="edit-actual" class="edit-input-num" value="${(e.actualMs/60000).toFixed(2)}" min="0.01" step="0.01">
             </div>
           </div>
           <div class="log-edit-actions">
-            <button class="btn-tiny accent" onclick="saveEdit(${i})">Save</button>
-            <button class="btn-tiny" onclick="cancelEdit()">Cancel</button>
+            <button class="btn btn-tiny accent" onclick="saveEdit(${i})">Save</button>
+            <button class="btn btn-tiny" onclick="cancelEdit()">Cancel</button>
           </div>
         </div>
       </div>`;
@@ -988,8 +968,8 @@ document.getElementById('stat-bias').textContent = brier.toFixed(3);
         <div class="log-task">${escHtml(e.task)}</div>
         <div class="log-meta">${formatDateShort(e.startTime)} · ${formatTime(e.startTime)} – ${formatTime(e.endTime)} · est. ${formatDuration(e.predictedMs)} / actual ${formatDuration(e.actualMs)}</div>
         <div class="entry-actions">
-          <button class="btn-tiny" onclick="editEntry(${i})">Edit</button>
-          <button class="btn-tiny" style="color:var(--danger);border-color:var(--danger-dim)" onclick="deleteEntry(${i})">Delete</button>
+          <button class="btn btn-tiny" onclick="editEntry(${i})">Edit</button>
+          <button class="btn btn-tiny danger" onclick="deleteEntry(${i})">Delete</button>
         </div>
       </div>
       <div class="log-delta ${cls}">${sign}${pct.toFixed(1)}%</div>
