@@ -72,6 +72,30 @@
     transition: opacity 1s ease;
   }
   #bg-canvas.active { opacity: 1; }
+  body.graph-mode .app { opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+  body.graph-mode #bg-canvas { opacity: 1 !important; }
+  body.has-graph #bg-canvas { pointer-events: auto; cursor: pointer; }
+  #graph-tooltip {
+    position: fixed;
+    pointer-events: none;
+    display: none;
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    line-height: 1.6;
+    backdrop-filter: blur(6px);
+    z-index: 10;
+    max-width: 260px;
+  }
+  #graph-tooltip .tt-task { color: var(--text); margin-bottom: 0.15rem; font-size: 12px; }
+  #graph-tooltip .tt-meta { color: var(--muted); }
+  #graph-tooltip .tt-delta { margin-top: 0.15rem; }
+  #graph-tooltip .tt-delta.over  { color: var(--danger); }
+  #graph-tooltip .tt-delta.under { color: var(--accent2); }
+  #graph-tooltip .tt-delta.exact { color: var(--fg-dim, var(--muted)); }
 
   .app {
     position: relative;
@@ -83,9 +107,9 @@
     display: flex;
     flex-direction: column;
     gap: 0;
-    transition: opacity 0.3s ease, background 0.3s ease, backdrop-filter 0.3s ease;
+    transition: background 0.3s ease, backdrop-filter 0.3s ease;
   }
-  body.has-graph:hover .app:not(:hover) { opacity: 0; }
+
   .app:hover {
     background: color-mix(in srgb, var(--bg) 50%, transparent);
     backdrop-filter: blur(3px);
@@ -587,13 +611,14 @@
 <body>
 
 <canvas id="bg-canvas"></canvas>
+<div id="graph-tooltip"></div>
 
 <div class="app">
   <header>
     <div class="logo">MERIDIAN</div>
     <div style="display:flex;align-items:center;gap:0.75rem;">
       <div class="header-sub">time · calibration</div>
-      <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9788; Light</button>
+<button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9788; Light</button>
     </div>
   </header>
 
@@ -672,7 +697,7 @@
         <div class="s-val" id="stat-avg">—</div>
         <div class="s-label">Avg Delta</div>
       </div>
-      <div class="stat-card">
+<div class="stat-card">
         <div class="s-val" id="stat-bias">—</div>
         <div class="s-label">Brier Score</div>
       </div>
@@ -748,6 +773,7 @@ function formatTime(ts) {
 function formatDateShort(ts) {
   return new Date(ts).toLocaleDateString([], {month:'short', day:'numeric'});
 }
+
 
 function startTimer() {
   const taskEl = document.getElementById('task-input');
@@ -924,7 +950,7 @@ function renderLog() {
 
   document.getElementById('stat-count').textContent = logs.length;
   document.getElementById('stat-avg').textContent = (avgDelta >= 0 ? '+' : '') + avgDelta.toFixed(1) + '%';
-  document.getElementById('stat-bias').textContent = brier.toFixed(3);
+document.getElementById('stat-bias').textContent = brier.toFixed(3);
 
   list.innerHTML = logs.map((e, i) => {
     if (i === editingIndex) {
@@ -1082,9 +1108,13 @@ function resizeCanvas() {
   canvas.height = window.innerHeight;
 }
 
+let graphPoints = [];
+let hoveredGraphPoint = null;
+
 function drawBgGraph() {
   resizeCanvas();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  graphPoints = [];
   if (logs.length < 2) return;
 
   const W = canvas.width, H = canvas.height;
@@ -1147,10 +1177,18 @@ function drawBgGraph() {
     const x = toX(i), y = toY(e.pctDiff);
     const isOver = e.pctDiff > 0;
     const color = Math.abs(e.pctDiff) < 2 ? exactDot : isOver ? overDot : underDot;
+    const isHovered = hoveredGraphPoint && hoveredGraphPoint.entry === e;
+    if (isHovered) {
+      ctx.beginPath();
+      ctx.arc(x, y, 9, 0, Math.PI * 2);
+      ctx.fillStyle = color.replace(/[\d.]+\)$/, '0.15)');
+      ctx.fill();
+    }
     ctx.beginPath();
-    ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+    ctx.arc(x, y, isHovered ? 5 : 3.5, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
+    graphPoints.push({ x, y, entry: e });
   });
 
   ctx.fillStyle = zeroLbl;
@@ -1178,7 +1216,53 @@ document.getElementById('estimate-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.stopPropagation(); startTimer(); }
 });
 
+canvas.addEventListener('click', () => {
+  if (logs.length >= 2) document.body.classList.toggle('graph-mode');
+});
+
+const graphTooltip = document.getElementById('graph-tooltip');
+canvas.addEventListener('mousemove', (e) => {
+  if (!document.body.classList.contains('graph-mode')) return;
+  const mx = e.clientX, my = e.clientY;
+  let nearest = null, nearestDist = Infinity;
+  for (const pt of graphPoints) {
+    const d = Math.hypot(pt.x - mx, pt.y - my);
+    if (d < nearestDist) { nearestDist = d; nearest = pt; }
+  }
+  if (!nearest || nearestDist > 48) {
+    if (hoveredGraphPoint !== null) { hoveredGraphPoint = null; drawBgGraph(); }
+    graphTooltip.style.display = 'none';
+    return;
+  }
+  if (hoveredGraphPoint !== nearest) { hoveredGraphPoint = nearest; drawBgGraph(); }
+  const entry = nearest.entry;
+  const pct = entry.pctDiff;
+  const sign = pct >= 0 ? '+' : '';
+  const cls = Math.abs(pct) < 2 ? 'exact' : pct > 0 ? 'over' : 'under';
+  graphTooltip.innerHTML =
+    `<div class="tt-task">${escHtml(entry.task)}</div>` +
+    `<div class="tt-meta">${formatDateShort(entry.startTime)} · ${formatTime(entry.startTime)} – ${formatTime(entry.endTime)}</div>` +
+    `<div class="tt-meta">est. ${formatDuration(entry.predictedMs)} / actual ${formatDuration(entry.actualMs)}</div>` +
+    `<div class="tt-delta ${cls}">${sign}${pct.toFixed(1)}%</div>`;
+
+  const tw = 270, th = 90, margin = 12;
+  const left = mx + tw + margin > window.innerWidth ? mx - tw - margin : mx + margin;
+  const top  = my + th + margin > window.innerHeight ? my - th - margin : my + margin;
+  graphTooltip.style.left = left + 'px';
+  graphTooltip.style.top  = top  + 'px';
+  graphTooltip.style.display = 'block';
+});
+
+canvas.addEventListener('mouseleave', () => {
+  graphTooltip.style.display = 'none';
+  if (hoveredGraphPoint !== null) { hoveredGraphPoint = null; drawBgGraph(); }
+});
+
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.body.classList.contains('graph-mode')) {
+    document.body.classList.remove('graph-mode');
+    return;
+  }
   const active = document.activeElement;
   const inInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
   if (inInput) return;
