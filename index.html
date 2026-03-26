@@ -463,6 +463,7 @@
   .log-entry:focus-within .entry-actions { opacity: 1; }
   .log-entry-editing { grid-template-columns: 1fr; }
   .btn-tiny.danger { color: var(--danger); border-color: var(--danger-dim); }
+  .btn-tiny.danger:hover { background: var(--danger); color: #1d2021; }
   .edit-input-task { font-size: 0.95rem; margin-bottom: 0.5rem; }
   .edit-input-num  { font-size: 0.9rem; }
   .log-edit-label {
@@ -999,6 +1000,7 @@ function saveEdit(i) {
   editingIndex = -1;
   saveLogs();
   renderLog();
+  drawBgGraph();
 }
 
 function deleteEntry(i) {
@@ -1007,6 +1009,7 @@ function deleteEntry(i) {
   else if (editingIndex > i) editingIndex--;
   saveLogs();
   renderLog();
+  drawBgGraph();
 }
 
 function escHtml(s) {
