@@ -451,15 +451,12 @@
   .log-delta.over { color: var(--danger); }
   .log-delta.exact { color: var(--accent2); }
 
-  .entry-actions {
-    display: flex;
-    gap: 0.4rem;
-    margin-top: 0.5rem;
-    opacity: 0;
-    transition: opacity 0.15s;
+  .log-entry:not(.log-entry-editing) {
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.15s;
   }
-  .log-entry:hover .entry-actions,
-  .log-entry:focus-within .entry-actions { opacity: 1; }
+  .log-entry:not(.log-entry-editing):hover { background: var(--surface); }
   .log-entry-editing { grid-template-columns: 1fr; }
   .btn-tiny.danger { color: var(--danger); border-color: var(--danger-dim); }
   .btn-tiny.danger:hover { background: var(--danger); color: #1d2021; }
@@ -956,6 +953,7 @@ function renderLog() {
           <div class="log-edit-actions">
             <button class="btn btn-tiny accent" onclick="saveEdit(${i})">Save</button>
             <button class="btn btn-tiny" onclick="cancelEdit()">Cancel</button>
+            <button class="btn btn-tiny danger" onclick="deleteEntry(${i})">Delete</button>
           </div>
         </div>
       </div>`;
@@ -963,14 +961,10 @@ function renderLog() {
     const pct = e.pctDiff;
     const cls = Math.abs(pct) < 2 ? 'exact' : pct > 0 ? 'over' : 'under';
     const sign = pct > 0 ? '+' : '';
-    return `<div class="log-entry" id="entry-${e.id}">
+    return `<div class="log-entry" id="entry-${e.id}" onclick="editEntry(${i})">
       <div>
         <div class="log-task">${escHtml(e.task)}</div>
         <div class="log-meta">${formatDateShort(e.startTime)} · ${formatTime(e.startTime)} – ${formatTime(e.endTime)} · est. ${formatDuration(e.predictedMs)} / actual ${formatDuration(e.actualMs)}</div>
-        <div class="entry-actions">
-          <button class="btn btn-tiny" onclick="editEntry(${i})">Edit</button>
-          <button class="btn btn-tiny danger" onclick="deleteEntry(${i})">Delete</button>
-        </div>
       </div>
       <div class="log-delta ${cls}">${sign}${pct.toFixed(1)}%</div>
     </div>`;
