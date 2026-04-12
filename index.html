@@ -15,6 +15,7 @@
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;700&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 20px; }
 
   :root {
     --bg: #1d2021;
@@ -30,6 +31,7 @@
     --accent2-dim: #d79921;
     --danger: #fb4934;
     --danger-dim: #cc241d;
+    --orange: #fe8019;
     --info: #83a598;
     --mono: 'IBM Plex Mono', monospace;
     --display: 'Cinzel', serif;
@@ -50,11 +52,13 @@
     --accent2-dim: #d79921;
     --danger: #9d0006;
     --danger-dim: #cc241d;
+    --orange: #d65d0e;
     --info: #076678;
   }
 
   body {
     font-family: var(--mono);
+    font-size: 1.25rem;
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
@@ -84,14 +88,14 @@
     border: 1px solid var(--border);
     padding: 0.5rem 0.75rem;
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 0.75rem;
     color: var(--text);
     line-height: 1.6;
     backdrop-filter: blur(6px);
     z-index: 10;
-    max-width: 260px;
+    max-width: 16.25rem;
   }
-  #graph-tooltip .tt-task { color: var(--text); margin-bottom: 0.15rem; font-size: 12px; }
+  #graph-tooltip .tt-task { color: var(--text); margin-bottom: 0.15rem; font-size: 0.8125rem; }
   #graph-tooltip .tt-meta { color: var(--muted); }
   #graph-tooltip .tt-delta { margin-top: 0.15rem; }
   #graph-tooltip .tt-delta.over  { color: var(--danger); }
@@ -101,13 +105,12 @@
   .app {
     position: relative;
     z-index: 1;
-    max-width: 640px;
+    max-width: 40rem;
     margin: 0 auto;
     padding: 2rem 1.5rem 4rem;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    gap: 0;
     background: color-mix(in srgb, var(--bg) 80%, transparent);
     backdrop-filter: blur(3px);
     transition: background 0.3s ease, backdrop-filter 0.3s ease;
@@ -124,14 +127,14 @@
 
   .logo {
     font-family: var(--display);
-    font-size: 13px;
+    font-size: 0.8125rem;
     letter-spacing: 0.3em;
     color: var(--accent2);
     text-transform: uppercase;
   }
 
   .header-sub {
-    font-size: 11px;
+    font-size: 0.75rem;
     color: var(--muted);
     letter-spacing: 0.1em;
     font-family: var(--display);
@@ -139,9 +142,9 @@
 
   .section-label {
     font-family: var(--display);
-    font-size: 10px;
+    font-size: 0.8125rem;
     letter-spacing: 0.25em;
-    color: var(--muted);
+    color: var(--orange);
     text-transform: uppercase;
     margin-bottom: 0.75rem;
   }
@@ -185,10 +188,11 @@
 
   .btn {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: 0.75rem;
     background: transparent;
     color: var(--muted);
     border: 1px solid var(--border);
+    border-radius: 2px;
     cursor: pointer;
     text-transform: uppercase;
     transition: color 0.15s, border-color 0.15s;
@@ -196,17 +200,17 @@
   .btn:hover { color: var(--text); border-color: var(--muted); }
 
   .start-btn {
-    font-size: 11px;
+    font-size: 0.75rem;
     letter-spacing: 0.2em;
     padding: 0.6rem 1.4rem;
     background: var(--accent2);
-    color: #1d2021;
+    color: var(--bg);
     border: none;
     transition: opacity 0.15s, transform 0.1s;
     white-space: nowrap;
     flex-shrink: 0;
   }
-  .start-btn:hover { opacity: 0.88; }
+  .start-btn:hover { background: var(--accent2-dim); }
   .start-btn:active { transform: scale(0.97); }
   .start-btn:disabled { opacity: 0.3; cursor: default; transform: none; }
 
@@ -224,7 +228,7 @@
   .timer-display.visible { display: flex; }
 
   .task-label {
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--muted);
     letter-spacing: 0.15em;
     font-family: var(--mono);
@@ -271,27 +275,26 @@
     height: 100%;
     background: var(--accent);
     transition: width 0.5s linear, background 0.5s;
-    max-width: none;
   }
   .elapsed-fill.over { background: var(--danger); }
 
   .timer-meta {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 0.75rem;
     color: var(--muted);
     letter-spacing: 0.1em;
   }
 
   .stop-btn {
     margin-top: 2rem;
-    font-size: 11px;
+    font-size: 0.75rem;
     letter-spacing: 0.2em;
     padding: 0.75rem 2.5rem;
     color: var(--danger);
     border-color: var(--danger);
     transition: background 0.15s, color 0.15s;
   }
-  .stop-btn:hover { background: var(--danger); color: #000; }
+  .stop-btn:hover { background: var(--danger); color: var(--bg); }
 
   .result-panel {
     display: none;
@@ -310,7 +313,7 @@
 
   .result-task {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--muted);
     letter-spacing: 0.1em;
     margin-bottom: 1rem;
@@ -329,7 +332,7 @@
   .result-delta.exact { color: var(--accent2); }
 
   .result-subline {
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--muted);
     margin-bottom: 1.5rem;
     font-family: var(--mono);
@@ -348,7 +351,7 @@
     border: 1px solid var(--border);
   }
   .result-cell .rc-label {
-    font-size: 10px;
+    font-size: 0.75rem;
     font-family: var(--mono);
     color: var(--muted);
     letter-spacing: 0.15em;
@@ -356,7 +359,7 @@
     margin-bottom: 0.3rem;
   }
   .result-cell .rc-val {
-    font-size: 14px;
+    font-size: 0.875rem;
     font-family: var(--mono);
     color: var(--text);
   }
@@ -367,17 +370,12 @@
   }
 
   .btn-ghost {
-    font-size: 11px;
+    font-size: 0.75rem;
     letter-spacing: 0.15em;
     padding: 0.5rem 1rem;
     flex: 1;
   }
 
-  .section-divider {
-    height: 1px;
-    background: var(--border);
-    margin: 2rem 0;
-  }
 
   .log-section { margin-top: 1rem; }
 
@@ -390,25 +388,100 @@
 
   .log-count {
     font-family: var(--display);
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--muted);
   }
 
-  .log-actions {
+  .gear-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    padding: 0.2rem;
+    line-height: 1;
+    transition: color 0.2s;
     display: flex;
-    gap: 0.5rem;
+    align-items: center;
   }
+  .gear-btn:hover { color: var(--text); }
+  .gear-btn svg { display: block; }
+
+  .settings-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 100;
+  }
+  .settings-overlay.open { display: block; }
+
+  .settings-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(22.5rem, 100vw);
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    z-index: 101;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+  }
+  .settings-panel.open { transform: translateX(0); }
+
+  .settings-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .settings-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 1.125rem;
+    line-height: 1;
+    padding: 0.1rem 0.3rem;
+    transition: color 0.2s;
+  }
+  .settings-close:hover { color: var(--text); }
+
+  .settings-body { padding: 1.5rem; display: flex; flex-direction: column; gap: 2rem; }
+
+  .settings-section-title {
+    font-family: var(--display);
+    font-size: 0.6875rem;
+    letter-spacing: 0.25em;
+    color: var(--orange);
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+
+  .settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .settings-row:last-child { margin-bottom: 0; }
 
   .btn-tiny {
     letter-spacing: 0.1em;
     padding: 0.3rem 0.7rem;
   }
   .btn-tiny.accent { color: var(--accent2); border-color: var(--accent2-dim); }
-  .btn-tiny.accent:hover { background: var(--accent2); color: #1d2021; }
+  .btn-tiny.accent:hover { background: var(--accent2); color: var(--bg); }
 
   .log-empty {
     font-family: var(--mono);
-    font-size: 12px;
+    font-size: 0.8125rem;
     color: var(--muted);
     padding: 2rem 0;
     text-align: center;
@@ -427,7 +500,7 @@
 
   .log-task {
     font-family: var(--data);
-    font-size: 16px;
+    font-size: 1rem;
     color: var(--text);
     margin-bottom: 0.3rem;
     line-height: 1.4;
@@ -435,17 +508,17 @@
 
   .log-meta {
     font-family: var(--data);
-    font-size: 12px;
+    font-size: 0.8125rem;
     color: var(--muted);
     letter-spacing: 0.03em;
   }
 
   .log-delta {
     font-family: var(--data);
-    font-size: 15px;
+    font-size: 0.9375rem;
     font-weight: 600;
     text-align: right;
-    padding-top: 3px;
+    padding-top: 0.2rem;
   }
   .log-delta.under { color: var(--accent); }
   .log-delta.over { color: var(--danger); }
@@ -459,12 +532,12 @@
   .log-entry:not(.log-entry-editing):hover { background: var(--surface); }
   .log-entry-editing { grid-template-columns: 1fr; }
   .btn-tiny.danger { color: var(--danger); border-color: var(--danger-dim); }
-  .btn-tiny.danger:hover { background: var(--danger); color: #1d2021; }
+  .btn-tiny.danger:hover { background: var(--danger); color: var(--bg); }
   .edit-input-task { font-size: 0.95rem; margin-bottom: 0.5rem; }
   .edit-input-num  { font-size: 0.9rem; }
   .log-edit-label {
     font-family: var(--display);
-    font-size: 10px;
+    font-size: 0.75rem;
     color: var(--muted);
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -477,9 +550,11 @@
   .log-edit-fields > div { flex: 1; }
   .log-edit-actions {
     display: flex;
-    gap: 0.5rem;
+    justify-content: space-between;
+    align-items: center;
     margin-top: 0.75rem;
   }
+  .btn-group { display: flex; gap: 0.5rem; }
 
   .stats-row {
     display: grid;
@@ -504,7 +579,7 @@
   }
   .stat-card .s-label {
     font-family: var(--display);
-    font-size: 9px;
+    font-size: 0.6875rem;
     color: var(--muted);
     letter-spacing: 0.15em;
     text-transform: uppercase;
@@ -518,10 +593,11 @@
     border-top: 1px solid var(--border);
     margin-top: 1rem;
   }
+  .auto-export-row.no-divider { margin-top: 0; border-top: none; padding-top: 0; }
 
   .toggle-label {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 0.75rem;
     color: var(--muted);
     letter-spacing: 0.1em;
     text-transform: uppercase;
@@ -529,10 +605,10 @@
   }
 
   .toggle {
-    width: 36px;
-    height: 20px;
+    width: 2.25rem;
+    height: 1.25rem;
     background: var(--border);
-    border-radius: 10px;
+    border-radius: 0.625rem;
     position: relative;
     cursor: pointer;
     transition: background 0.2s;
@@ -541,19 +617,19 @@
   .toggle::after {
     content: '';
     position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 14px;
-    height: 14px;
+    top: 0.2rem;
+    left: 0.2rem;
+    width: 0.875rem;
+    height: 0.875rem;
     background: var(--muted);
     border-radius: 50%;
     transition: transform 0.2s, background 0.2s;
   }
   .toggle.on { background: var(--accent-dim); }
-  .toggle.on::after { transform: translateX(16px); background: var(--accent); }
+  .toggle.on::after { transform: translateX(1rem); background: var(--accent); }
 
   .export-note {
-    font-size: 11px;
+    font-size: 0.75rem;
     color: var(--muted);
     font-family: var(--mono);
     line-height: 1.5;
@@ -562,7 +638,7 @@
 
   .file-handle-status {
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: 0.75rem;
     color: var(--info);
     letter-spacing: 0.1em;
     margin-top: 0.25rem;
@@ -570,24 +646,28 @@
 
   .theme-switcher {
     display: flex;
+    width: 100%;
     border: 1px solid var(--border);
     border-radius: 4px;
     overflow: hidden;
   }
   .theme-switcher button {
+    flex: 1;
+    text-align: center;
     background: none;
     border: none;
     border-right: 1px solid var(--border);
     color: var(--text-dim);
     cursor: pointer;
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 0.75rem;
     letter-spacing: 0.1em;
-    padding: 0.3rem 0.55rem;
+    padding: 0.5rem 0.55rem;
     transition: color 0.2s, background 0.2s;
     line-height: 1.4;
   }
   .theme-switcher button:last-child { border-right: none; }
+  .theme-switcher button .key { letter-spacing: 0; }
   .theme-switcher button:hover { color: var(--text); background: var(--surface2); }
   .theme-switcher button.active { color: var(--text); background: var(--surface2); }
   .key { text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 2px; }
@@ -596,14 +676,20 @@
     margin-top: auto;
     padding-top: 3rem;
     font-family: var(--mono);
-    font-size: 10px;
+    font-size: 0.75rem;
     color: var(--muted);
     text-align: center;
     letter-spacing: 0.1em;
   }
 
-  .pulse { animation: pulse 1s ease-in-out infinite; }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  @media (max-width: 480px) {
+    html { font-size: 17px; }
+    .app { padding: 1.5rem 1rem; }
+    .time-row { flex-direction: column; }
+    .time-row .input-block { margin-bottom: 1rem; }
+    .start-btn { width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -616,11 +702,11 @@
     <div class="logo">MERIDIAN</div>
     <div style="display:flex;align-items:center;gap:0.75rem;">
       <div class="header-sub">time · calibration</div>
-<div class="theme-switcher" id="theme-switcher">
-  <button id="theme-auto" onclick="setTheme('auto')"><span class="key">A</span>uto</button>
-  <button id="theme-light" onclick="setTheme('light')"><span class="key">L</span>ight</button>
-  <button id="theme-dark" onclick="setTheme('dark')"><span class="key">D</span>ark</button>
-</div>
+      <button class="gear-btn" onclick="openSettings()" title="Settings">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 512 512" fill="currentColor">
+          <path d="M495.9 166.6c3.2 8.7 .5 18.4-6.4 24.6l-43.3 39.4c1.1 8.3 1.7 16.8 1.7 25.4s-.6 17.1-1.7 25.4l43.3 39.4c6.9 6.2 9.6 15.9 6.4 24.6c-4.4 11.9-9.7 23.3-15.8 34.3l-4.7 8.1c-6.6 11-14 21.4-22.1 31.2c-5.9 7.2-15.7 9.6-24.5 6.8l-55.7-17.7c-13.4 10.3-28.2 18.9-44 25.4l-12.5 57.1c-2 9.1-9 16.3-18.2 17.8c-13.8 2.3-28 3.5-42.5 3.5s-28.7-1.2-42.5-3.5c-9.2-1.5-16.2-8.7-18.2-17.8l-12.5-57.1c-15.8-6.5-30.6-15.1-44-25.4L83.1 425.9c-8.8 2.8-18.6 .3-24.5-6.8c-8.1-9.8-15.5-20.2-22.1-31.2l-4.7-8.1c-6.1-11-11.4-22.4-15.8-34.3c-3.2-8.7-.5-18.4 6.4-24.6l43.3-39.4C64.6 273.1 64 264.6 64 256s.6-17.1 1.7-25.4L22.4 191.2c-6.9-6.2-9.6-15.9-6.4-24.6c4.4-11.9 9.7-23.3 15.8-34.3l4.7-8.1c6.6-11 14-21.4 22.1-31.2c5.9-7.2 15.7-9.6 24.5-6.8l55.7 17.7c13.4-10.3 28.2-18.9 44-25.4l12.5-57.1c2-9.1 9-16.3 18.2-17.8C227.3 1.2 241.5 0 256 0s28.7 1.2 42.5 3.5c9.2 1.5 16.2 8.7 18.2 17.8l12.5 57.1c15.8 6.5 30.6 15.1 44 25.4l55.7-17.7c8.8-2.8 18.6-.3 24.5 6.8c8.1 9.8 15.5 20.2 22.1 31.2l4.7 8.1c6.1 11 11.4 22.4 15.8 34.3zM256 336a80 80 0 1 0 0-160 80 80 0 1 0 0 160z"/>
+        </svg>
+      </button>
     </div>
   </header>
 
@@ -682,12 +768,6 @@
         <div class="section-label" style="margin-bottom:0">Session Log</div>
         <div class="log-count" id="log-count">0 entries</div>
       </div>
-      <div class="log-actions">
-        <button class="btn btn-tiny accent" onclick="exportLog()">↓ <span class="key">E</span>xport CSV</button>
-        <button class="btn btn-tiny accent" onclick="document.getElementById('import-input').click()">↑ <span class="key">I</span>mport CSV</button>
-        <input type="file" id="import-input" accept=".csv" style="display:none" onchange="importCSV(this)">
-        <button class="btn btn-tiny" onclick="clearLog()"><span class="key">C</span>lear</button>
-      </div>
     </div>
 
     <div class="stats-row" id="stats-row" style="display:none">
@@ -705,38 +785,73 @@
       </div>
     </div>
 
-    <div id="log-list">
-      <div class="log-empty">No sessions yet.<br>Start a task to begin tracking.</div>
-    </div>
-
-    <div class="auto-export-row">
-      <div class="toggle-label">Auto-backup</div>
-      <div class="toggle" id="backup-toggle" onclick="toggleBackup()"></div>
-    </div>
-    <div id="backup-settings" style="display:none">
-      <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
-        <button class="btn btn-tiny" id="freq-daily" onclick="setBackupFreq('daily')">Daily</button>
-        <button class="btn btn-tiny" id="freq-weekly" onclick="setBackupFreq('weekly')">Weekly</button>
-      </div>
-      <div class="export-note" id="backup-note"></div>
-      <div class="file-handle-status" id="backup-dir-status"></div>
-      <div style="margin-top:0.75rem;">
-        <button class="btn btn-tiny accent" onclick="runBackupNow()">&#x2193; Backup Now</button>
-      </div>
-    </div>
-
-    <div id="backup-reminder" style="display:none; margin-top:1rem; padding:0.75rem 1rem; border:1px solid var(--accent2-dim); background:rgba(215,153,33,0.08);">
-      <div style="font-family:var(--mono); font-size:11px; color:var(--accent2); letter-spacing:0.1em; margin-bottom:0.4rem;">BACKUP REMINDER</div>
-      <div style="font-family:var(--mono); font-size:11px; color:var(--text-dim);" id="reminder-text"></div>
-      <div style="display:flex; gap:0.5rem; margin-top:0.75rem;">
+    <div id="backup-reminder" style="display:none; margin-top:1rem; padding:0.75rem 1rem; border:1px solid var(--accent2-dim); background:color-mix(in srgb, var(--accent2) 8%, transparent);">
+      <div style="font-family:var(--mono); font-size:0.6875rem; color:var(--accent2); letter-spacing:0.1em; margin-bottom:0.4rem;">BACKUP REMINDER</div>
+      <div style="font-family:var(--mono); font-size:0.6875rem; color:var(--text-dim);" id="reminder-text"></div>
+      <div class="btn-group" style="margin-top:0.75rem;">
         <button class="btn btn-tiny accent" onclick="runBackupNow()">&#x2193; Backup Now</button>
         <button class="btn btn-tiny" onclick="snoozeReminder()">Remind Later</button>
         <button class="btn btn-tiny" onclick="dismissReminder()">Dismiss</button>
       </div>
     </div>
+
+    <div id="log-list">
+      <div class="log-empty">No sessions yet.<br>Start a task to begin tracking.</div>
+    </div>
   </div>
 
   <footer>all data stored locally · no server · no cloud</footer>
+</div>
+
+<div class="settings-overlay" id="settings-overlay" onclick="closeSettings()"></div>
+<div class="settings-panel" id="settings-panel">
+  <div class="settings-head">
+    <div class="section-label" style="margin-bottom:0">Settings</div>
+    <button class="settings-close" onclick="closeSettings()">&#x2715;</button>
+  </div>
+  <div class="settings-body">
+
+    <div>
+      <div class="settings-section-title">Appearance</div>
+      <div class="theme-switcher" id="theme-switcher">
+        <button id="theme-auto" onclick="setTheme('auto')"><span class="key">A</span>uto</button>
+        <button id="theme-light" onclick="setTheme('light')"><span class="key">L</span>ight</button>
+        <button id="theme-dark" onclick="setTheme('dark')"><span class="key">D</span>ark</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="settings-section-title">Data</div>
+      <div class="settings-row">
+        <button class="btn btn-tiny accent" onclick="exportLog()">↑ <span class="key">E</span>xport CSV</button>
+        <button class="btn btn-tiny accent" onclick="document.getElementById('import-input').click()">↓ <span class="key">I</span>mport CSV</button>
+        <input type="file" id="import-input" accept=".csv" style="display:none" onchange="importCSV(this)">
+      </div>
+      <div class="settings-row">
+        <button class="btn btn-tiny danger" onclick="clearLog()"><span class="key">C</span>lear Log</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="settings-section-title">Backup</div>
+      <div class="auto-export-row no-divider">
+        <div class="toggle-label">Auto-backup</div>
+        <div class="toggle" id="backup-toggle" onclick="toggleBackup()"></div>
+      </div>
+      <div id="backup-settings" style="display:none">
+        <div class="btn-group" style="margin-bottom:0.75rem;">
+          <button class="btn btn-tiny" id="freq-daily" onclick="setBackupFreq('daily')">Daily</button>
+          <button class="btn btn-tiny" id="freq-weekly" onclick="setBackupFreq('weekly')">Weekly</button>
+        </div>
+        <div class="export-note" id="backup-note"></div>
+        <div class="file-handle-status" id="backup-dir-status"></div>
+        <div id="backup-now-row" style="margin-top:0.75rem;">
+          <button class="btn btn-tiny accent" onclick="runBackupNow()">&#x2193; Backup Now</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
 </div>
 
 <script>
@@ -750,7 +865,6 @@ let editingIndex = -1;
 let startTime = null;
 let predictedMs = 0;
 let currentTask = '';
-let bgAnimFrame = null;
 
 const canvas = document.getElementById('bg-canvas');
 const ctx = canvas.getContext('2d');
@@ -971,8 +1085,10 @@ function renderLog() {
             </div>
           </div>
           <div class="log-edit-actions">
-            <button class="btn btn-tiny accent" onclick="saveEdit(${i})">Save</button>
-            <button class="btn btn-tiny" onclick="cancelEdit()">Cancel</button>
+            <div class="btn-group">
+              <button class="btn btn-tiny" onclick="cancelEdit()">Cancel</button>
+              <button class="btn btn-tiny accent" onclick="saveEdit(${i})">Save</button>
+            </div>
             <button class="btn btn-tiny danger" onclick="deleteEntry(${i})">Delete</button>
           </div>
         </div>
@@ -1290,8 +1406,12 @@ canvas.addEventListener('mouseleave', () => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && document.body.classList.contains('graph-mode')) {
-    document.body.classList.remove('graph-mode');
+  if (e.key === 'Escape') {
+    if (document.body.classList.contains('graph-mode')) {
+      document.body.classList.remove('graph-mode');
+      return;
+    }
+    closeSettings();
     return;
   }
   const active = document.activeElement;
@@ -1379,13 +1499,14 @@ function renderBackupUI() {
   const last = backupCfg.lastBackup ? new Date(backupCfg.lastBackup).toLocaleDateString() : 'never';
   const freqLabel = backupCfg.freq === 'daily' ? 'daily' : 'weekly';
 
+  document.getElementById('backup-now-row').style.display = hasFSAPI ? '' : 'none';
+
   if (hasFSAPI) {
     noteEl.innerHTML = 'A timestamped CSV will be saved automatically when you open the app and a ' + freqLabel + ' backup is due.<br><br>Last backup: <span style="color:var(--text)">' + last + '</span>';
-    statusEl.textContent = '';
   } else {
-    noteEl.innerHTML = 'File System API not available — you will receive an in-app reminder to export manually on a ' + freqLabel + ' basis.<br><br>Last backup: <span style="color:var(--text)">' + last + '</span>';
-    statusEl.textContent = '';
+    noteEl.innerHTML = 'Auto-backup requires a browser with File System Access API (e.g. Chrome). You\'ll receive an in-app reminder to export manually on a ' + freqLabel + ' basis.<br><br>Last backup: <span style="color:var(--text)">' + last + '</span>';
   }
+  statusEl.textContent = '';
 }
 
 function isBackupDue() {
@@ -1488,6 +1609,16 @@ setInterval(checkBackupDue, 3600000);
 
 renderBackupUI();
 checkBackupDue();
+
+// ── Settings panel ───────────────────────────────────────────────
+function openSettings() {
+  document.getElementById('settings-overlay').classList.add('open');
+  document.getElementById('settings-panel').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.remove('open');
+  document.getElementById('settings-panel').classList.remove('open');
+}
 
 // ── Theme ─────────────────────────────────────────────────────────
 const THEME_KEY = 'meridian_theme';
