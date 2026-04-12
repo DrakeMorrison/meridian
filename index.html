@@ -30,6 +30,7 @@
     --accent2-dim: #d79921;
     --danger: #fb4934;
     --danger-dim: #cc241d;
+    --orange: #fe8019;
     --info: #83a598;
     --mono: 'IBM Plex Mono', monospace;
     --display: 'Cinzel', serif;
@@ -50,11 +51,13 @@
     --accent2-dim: #d79921;
     --danger: #9d0006;
     --danger-dim: #cc241d;
+    --orange: #af3a03;
     --info: #076678;
   }
 
   body {
     font-family: var(--mono);
+    font-size: 20px;
     background: var(--bg);
     color: var(--text);
     min-height: 100vh;
@@ -139,9 +142,9 @@
 
   .section-label {
     font-family: var(--display);
-    font-size: 10px;
+    font-size: 40px;
     letter-spacing: 0.25em;
-    color: var(--muted);
+    color: var(--orange);
     text-transform: uppercase;
     margin-bottom: 0.75rem;
   }
@@ -394,10 +397,85 @@
     color: var(--muted);
   }
 
-  .log-actions {
+  .gear-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    padding: 0.2rem;
+    line-height: 1;
+    transition: color 0.2s;
     display: flex;
-    gap: 0.5rem;
+    align-items: center;
   }
+  .gear-btn:hover { color: var(--text); }
+  .gear-btn svg { display: block; }
+
+  .settings-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 100;
+  }
+  .settings-overlay.open { display: block; }
+
+  .settings-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(360px, 100vw);
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    z-index: 101;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    overflow-y: auto;
+  }
+  .settings-panel.open { transform: translateX(0); }
+
+  .settings-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.25rem 1.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .settings-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 18px;
+    line-height: 1;
+    padding: 0.1rem 0.3rem;
+    transition: color 0.2s;
+  }
+  .settings-close:hover { color: var(--text); }
+
+  .settings-body { padding: 1.5rem; display: flex; flex-direction: column; gap: 2rem; }
+
+  .settings-section-title {
+    font-family: var(--display);
+    font-size: 40px;
+    letter-spacing: 0.25em;
+    color: var(--orange);
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+
+  .settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .settings-row:last-child { margin-bottom: 0; }
 
   .btn-tiny {
     letter-spacing: 0.1em;
@@ -616,11 +694,11 @@
     <div class="logo">MERIDIAN</div>
     <div style="display:flex;align-items:center;gap:0.75rem;">
       <div class="header-sub">time · calibration</div>
-<div class="theme-switcher" id="theme-switcher">
-  <button id="theme-auto" onclick="setTheme('auto')"><span class="key">A</span>uto</button>
-  <button id="theme-light" onclick="setTheme('light')"><span class="key">L</span>ight</button>
-  <button id="theme-dark" onclick="setTheme('dark')"><span class="key">D</span>ark</button>
-</div>
+      <button class="gear-btn" onclick="openSettings()" title="Settings">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 512 512" fill="currentColor">
+          <path d="M495.9 166.6c3.2 8.7 .5 18.4-6.4 24.6l-43.3 39.4c1.1 8.3 1.7 16.8 1.7 25.4s-.6 17.1-1.7 25.4l43.3 39.4c6.9 6.2 9.6 15.9 6.4 24.6c-4.4 11.9-9.7 23.3-15.8 34.3l-4.7 8.1c-6.6 11-14 21.4-22.1 31.2c-5.9 7.2-15.7 9.6-24.5 6.8l-55.7-17.7c-13.4 10.3-28.2 18.9-44 25.4l-12.5 57.1c-2 9.1-9 16.3-18.2 17.8c-13.8 2.3-28 3.5-42.5 3.5s-28.7-1.2-42.5-3.5c-9.2-1.5-16.2-8.7-18.2-17.8l-12.5-57.1c-15.8-6.5-30.6-15.1-44-25.4L83.1 425.9c-8.8 2.8-18.6 .3-24.5-6.8c-8.1-9.8-15.5-20.2-22.1-31.2l-4.7-8.1c-6.1-11-11.4-22.4-15.8-34.3c-3.2-8.7-.5-18.4 6.4-24.6l43.3-39.4C64.6 273.1 64 264.6 64 256s.6-17.1 1.7-25.4L22.4 191.2c-6.9-6.2-9.6-15.9-6.4-24.6c4.4-11.9 9.7-23.3 15.8-34.3l4.7-8.1c6.6-11 14-21.4 22.1-31.2c5.9-7.2 15.7-9.6 24.5-6.8l55.7 17.7c13.4-10.3 28.2-18.9 44-25.4l12.5-57.1c2-9.1 9-16.3 18.2-17.8C227.3 1.2 241.5 0 256 0s28.7 1.2 42.5 3.5c9.2 1.5 16.2 8.7 18.2 17.8l12.5 57.1c15.8 6.5 30.6 15.1 44 25.4l55.7-17.7c8.8-2.8 18.6-.3 24.5 6.8c8.1 9.8 15.5 20.2 22.1 31.2l4.7 8.1c6.1 11 11.4 22.4 15.8 34.3zM256 336a80 80 0 1 0 0-160 80 80 0 1 0 0 160z"/>
+        </svg>
+      </button>
     </div>
   </header>
 
@@ -682,12 +760,6 @@
         <div class="section-label" style="margin-bottom:0">Session Log</div>
         <div class="log-count" id="log-count">0 entries</div>
       </div>
-      <div class="log-actions">
-        <button class="btn btn-tiny accent" onclick="exportLog()">↓ <span class="key">E</span>xport CSV</button>
-        <button class="btn btn-tiny accent" onclick="document.getElementById('import-input').click()">↑ <span class="key">I</span>mport CSV</button>
-        <input type="file" id="import-input" accept=".csv" style="display:none" onchange="importCSV(this)">
-        <button class="btn btn-tiny" onclick="clearLog()"><span class="key">C</span>lear</button>
-      </div>
     </div>
 
     <div class="stats-row" id="stats-row" style="display:none">
@@ -705,26 +777,6 @@
       </div>
     </div>
 
-    <div id="log-list">
-      <div class="log-empty">No sessions yet.<br>Start a task to begin tracking.</div>
-    </div>
-
-    <div class="auto-export-row">
-      <div class="toggle-label">Auto-backup</div>
-      <div class="toggle" id="backup-toggle" onclick="toggleBackup()"></div>
-    </div>
-    <div id="backup-settings" style="display:none">
-      <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
-        <button class="btn btn-tiny" id="freq-daily" onclick="setBackupFreq('daily')">Daily</button>
-        <button class="btn btn-tiny" id="freq-weekly" onclick="setBackupFreq('weekly')">Weekly</button>
-      </div>
-      <div class="export-note" id="backup-note"></div>
-      <div class="file-handle-status" id="backup-dir-status"></div>
-      <div style="margin-top:0.75rem;">
-        <button class="btn btn-tiny accent" onclick="runBackupNow()">&#x2193; Backup Now</button>
-      </div>
-    </div>
-
     <div id="backup-reminder" style="display:none; margin-top:1rem; padding:0.75rem 1rem; border:1px solid var(--accent2-dim); background:rgba(215,153,33,0.08);">
       <div style="font-family:var(--mono); font-size:11px; color:var(--accent2); letter-spacing:0.1em; margin-bottom:0.4rem;">BACKUP REMINDER</div>
       <div style="font-family:var(--mono); font-size:11px; color:var(--text-dim);" id="reminder-text"></div>
@@ -734,9 +786,64 @@
         <button class="btn btn-tiny" onclick="dismissReminder()">Dismiss</button>
       </div>
     </div>
+
+    <div id="log-list">
+      <div class="log-empty">No sessions yet.<br>Start a task to begin tracking.</div>
+    </div>
   </div>
 
   <footer>all data stored locally · no server · no cloud</footer>
+</div>
+
+<div class="settings-overlay" id="settings-overlay" onclick="closeSettings()"></div>
+<div class="settings-panel" id="settings-panel">
+  <div class="settings-head">
+    <div class="section-label" style="margin-bottom:0">Settings</div>
+    <button class="settings-close" onclick="closeSettings()">&#x2715;</button>
+  </div>
+  <div class="settings-body">
+
+    <div>
+      <div class="settings-section-title">Appearance</div>
+      <div class="theme-switcher" id="theme-switcher">
+        <button id="theme-auto" onclick="setTheme('auto')"><span class="key">A</span>uto</button>
+        <button id="theme-light" onclick="setTheme('light')"><span class="key">L</span>ight</button>
+        <button id="theme-dark" onclick="setTheme('dark')"><span class="key">D</span>ark</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="settings-section-title">Data</div>
+      <div class="settings-row">
+        <button class="btn btn-tiny accent" onclick="exportLog()">↓ <span class="key">E</span>xport CSV</button>
+        <button class="btn btn-tiny accent" onclick="document.getElementById('import-input').click()">↑ <span class="key">I</span>mport CSV</button>
+        <input type="file" id="import-input" accept=".csv" style="display:none" onchange="importCSV(this)">
+      </div>
+      <div class="settings-row">
+        <button class="btn btn-tiny danger" onclick="clearLog()"><span class="key">C</span>lear Log</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="settings-section-title">Backup</div>
+      <div class="auto-export-row" style="margin-top:0; border-top:none; padding-top:0;">
+        <div class="toggle-label">Auto-backup</div>
+        <div class="toggle" id="backup-toggle" onclick="toggleBackup()"></div>
+      </div>
+      <div id="backup-settings" style="display:none">
+        <div style="display:flex; gap:0.5rem; margin-bottom:0.75rem;">
+          <button class="btn btn-tiny" id="freq-daily" onclick="setBackupFreq('daily')">Daily</button>
+          <button class="btn btn-tiny" id="freq-weekly" onclick="setBackupFreq('weekly')">Weekly</button>
+        </div>
+        <div class="export-note" id="backup-note"></div>
+        <div class="file-handle-status" id="backup-dir-status"></div>
+        <div id="backup-now-row" style="margin-top:0.75rem;">
+          <button class="btn btn-tiny accent" onclick="runBackupNow()">&#x2193; Backup Now</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
 </div>
 
 <script>
@@ -1379,13 +1486,14 @@ function renderBackupUI() {
   const last = backupCfg.lastBackup ? new Date(backupCfg.lastBackup).toLocaleDateString() : 'never';
   const freqLabel = backupCfg.freq === 'daily' ? 'daily' : 'weekly';
 
+  document.getElementById('backup-now-row').style.display = hasFSAPI ? '' : 'none';
+
   if (hasFSAPI) {
     noteEl.innerHTML = 'A timestamped CSV will be saved automatically when you open the app and a ' + freqLabel + ' backup is due.<br><br>Last backup: <span style="color:var(--text)">' + last + '</span>';
-    statusEl.textContent = '';
   } else {
-    noteEl.innerHTML = 'File System API not available — you will receive an in-app reminder to export manually on a ' + freqLabel + ' basis.<br><br>Last backup: <span style="color:var(--text)">' + last + '</span>';
-    statusEl.textContent = '';
+    noteEl.innerHTML = 'Auto-backup requires a browser with File System Access API (e.g. Chrome). You\'ll receive an in-app reminder to export manually on a ' + freqLabel + ' basis.<br><br>Last backup: <span style="color:var(--text)">' + last + '</span>';
   }
+  statusEl.textContent = '';
 }
 
 function isBackupDue() {
@@ -1488,6 +1596,19 @@ setInterval(checkBackupDue, 3600000);
 
 renderBackupUI();
 checkBackupDue();
+
+// ── Settings panel ───────────────────────────────────────────────
+function openSettings() {
+  document.getElementById('settings-overlay').classList.add('open');
+  document.getElementById('settings-panel').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.remove('open');
+  document.getElementById('settings-panel').classList.remove('open');
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeSettings();
+});
 
 // ── Theme ─────────────────────────────────────────────────────────
 const THEME_KEY = 'meridian_theme';
