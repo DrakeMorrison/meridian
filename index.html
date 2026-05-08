@@ -285,8 +285,13 @@
     letter-spacing: 0.1em;
   }
 
-  .stop-btn {
+  .timer-actions {
     margin-top: 2rem;
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .stop-btn {
     font-size: 0.75rem;
     letter-spacing: 0.2em;
     padding: 0.75rem 2.5rem;
@@ -295,6 +300,59 @@
     transition: background 0.15s, color 0.15s;
   }
   .stop-btn:hover { background: var(--danger); color: var(--bg); }
+
+  .pause-btn {
+    font-size: 0.75rem;
+    letter-spacing: 0.2em;
+    padding: 0.75rem 2.5rem;
+    color: var(--accent2);
+    border-color: var(--accent2-dim);
+    transition: background 0.15s, color 0.15s;
+  }
+  .pause-btn:hover { background: var(--accent2); color: var(--bg); }
+
+  .paused-section {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+  }
+  .paused-section.empty { display: none; }
+  .paused-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .paused-entry {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--accent2) 6%, transparent);
+    border-left: 2px solid var(--accent2-dim);
+  }
+  .paused-task {
+    font-family: var(--data);
+    font-size: 0.95rem;
+    color: var(--text);
+    margin-bottom: 0.2rem;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .paused-meta {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+  .paused-meta .paused-over { color: var(--danger); }
+  .paused-actions {
+    display: flex;
+    gap: 0.4rem;
+    flex-shrink: 0;
+  }
 
   .result-panel {
     display: none;
@@ -732,7 +790,10 @@
       <div class="predicted-marker" id="predicted-marker"></div>
     </div>
     <div class="timer-meta" id="timer-meta">est. — min</div>
-    <button class="btn stop-btn" onclick="stopTimer()"><span class="key">S</span>TOP</button>
+    <div class="timer-actions">
+      <button class="btn pause-btn" onclick="pauseActiveTimer()"><span class="key">P</span>AUSE</button>
+      <button class="btn stop-btn" onclick="stopTimer()"><span class="key">S</span>TOP</button>
+    </div>
   </div>
 
   <div class="result-panel" id="result-panel">
@@ -760,6 +821,11 @@
     <div class="result-actions">
       <button class="btn btn-ghost" onclick="clearResult()"><span class="key">N</span>EW TASK</button>
     </div>
+  </div>
+
+  <div class="paused-section empty" id="paused-section">
+    <div class="section-label" style="margin-bottom:0.5rem">Paused</div>
+    <div class="paused-list" id="paused-list"></div>
   </div>
 
   <div class="log-section">
@@ -856,21 +922,38 @@
 
 <script>
 const DB_KEY = 'meridian_logs';
+const ACTIVE_KEY = 'meridian_active';
+const PAUSED_KEY = 'meridian_paused';
 let logs = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
+let pausedTimers = JSON.parse(localStorage.getItem(PAUSED_KEY) || '[]');
 let timerInterval = null;
 let timerNotified = false;
 let fibTimeout = null;
 let fibA = 1, fibB = 1;
 let editingIndex = -1;
-let startTime = null;
-let predictedMs = 0;
-let currentTask = '';
+// Active timer: null when idle. Shape:
+// { id, task, predictedMs, startTime, accumulatedMs, lastResumeAt, notified }
+let activeTimer = null;
 
 const canvas = document.getElementById('bg-canvas');
 const ctx = canvas.getContext('2d');
 
 function saveLogs() {
   localStorage.setItem(DB_KEY, JSON.stringify(logs));
+}
+
+function saveActive() {
+  if (activeTimer) localStorage.setItem(ACTIVE_KEY, JSON.stringify(activeTimer));
+  else localStorage.removeItem(ACTIVE_KEY);
+}
+
+function savePaused() {
+  localStorage.setItem(PAUSED_KEY, JSON.stringify(pausedTimers));
+}
+
+function activeElapsed() {
+  if (!activeTimer) return 0;
+  return activeTimer.accumulatedMs + (Date.now() - activeTimer.lastResumeAt);
 }
 
 function formatDuration(ms) {
@@ -907,40 +990,57 @@ function startTimer() {
     return;
   }
 
-  currentTask = task;
-  predictedMs = estMin * 60 * 1000;
-  startTime = Date.now();
+  if (activeTimer) pauseActiveTimer();
 
+  const now = Date.now();
+  activeTimer = {
+    id: now,
+    task,
+    predictedMs: estMin * 60 * 1000,
+    startTime: now,
+    accumulatedMs: 0,
+    lastResumeAt: now,
+    notified: false,
+  };
+  saveActive();
+
+  beginActiveTimerUI();
+  Notification.requestPermission();
+}
+
+function beginActiveTimerUI() {
+  const estMin = activeTimer.predictedMs / 60000;
   document.getElementById('input-section').style.display = 'none';
   document.getElementById('task-input').disabled = true;
   document.getElementById('estimate-input').disabled = true;
   document.getElementById('start-btn').disabled = true;
   document.getElementById('result-panel').classList.remove('visible');
 
-  document.getElementById('running-task-label').textContent = task.toUpperCase();
-  document.getElementById('timer-meta').textContent = `est. ${estMin} min`;
+  document.getElementById('running-task-label').textContent = activeTimer.task.toUpperCase();
+  document.getElementById('timer-meta').textContent = `est. ${(+estMin.toFixed(2))} min`;
   document.getElementById('timer-display').classList.add('visible');
 
-  timerNotified = false;
-  Notification.requestPermission();
-
+  timerNotified = activeTimer.notified;
   startBackgroundGraph();
   updateTimerDisplay();
+  if (timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(updateTimerDisplay, 500);
 }
 
 function updateTimerDisplay() {
-  const elapsed = Date.now() - startTime;
-  const remaining = predictedMs - elapsed;
+  if (!activeTimer) return;
+  const elapsed = activeElapsed();
+  const remaining = activeTimer.predictedMs - elapsed;
   const isOver = remaining < 0;
 
   const digits = document.getElementById('time-digits');
   if (isOver) {
     digits.textContent = '-' + formatDuration(Math.abs(remaining));
     digits.classList.add('over');
-    if (!timerNotified && Notification.permission === 'granted') {
-      timerNotified = true;
-      const n = new Notification('Meridian', { body: `Time's up: ${currentTask}` });
+    if (!activeTimer.notified && Notification.permission === 'granted') {
+      activeTimer.notified = true;
+      saveActive();
+      const n = new Notification('Meridian', { body: `Time's up: ${activeTimer.task}` });
       n.onclick = () => window.focus();
       fibA = 1; fibB = 1;
       scheduleFibNotification();
@@ -951,7 +1051,7 @@ function updateTimerDisplay() {
   }
 
   const fill = document.getElementById('elapsed-fill');
-  const pct = Math.min((elapsed / predictedMs) * 100, 100);
+  const pct = Math.min((elapsed / activeTimer.predictedMs) * 100, 100);
   fill.style.width = pct + '%';
   if (isOver) fill.classList.add('over'); else fill.classList.remove('over');
 
@@ -965,35 +1065,46 @@ function scheduleFibNotification() {
   fibA = fibB;
   fibB = next;
   fibTimeout = setTimeout(() => {
-    if (Notification.permission === 'granted') {
-      const n = new Notification('Meridian', { body: `Still going: ${currentTask}` });
+    if (activeTimer && Notification.permission === 'granted') {
+      const n = new Notification('Meridian', { body: `Still going: ${activeTimer.task}` });
       n.onclick = () => window.focus();
     }
     scheduleFibNotification();
   }, delayMs);
 }
 
-function stopTimer() {
-  if (!timerInterval) return;
-  clearInterval(timerInterval);
-  timerInterval = null;
-  clearTimeout(fibTimeout);
-  fibTimeout = null;
+function clearActiveIntervals() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  if (fibTimeout) { clearTimeout(fibTimeout); fibTimeout = null; }
+}
 
+function hideActiveTimerUI() {
+  document.getElementById('timer-display').classList.remove('visible');
+  document.getElementById('task-input').disabled = false;
+  document.getElementById('estimate-input').disabled = false;
+  document.getElementById('start-btn').disabled = false;
+}
+
+function logEntryFromTimer(t, actualMs) {
   const endTime = Date.now();
-  const actualMs = endTime - startTime;
-  const diffMs = actualMs - predictedMs;
-  const pct = ((diffMs / predictedMs) * 100);
-
-  const entry = {
-    id: Date.now(),
-    task: currentTask,
-    predictedMs,
+  const pct = ((actualMs - t.predictedMs) / t.predictedMs) * 100;
+  return {
+    id: t.id,
+    task: t.task,
+    predictedMs: t.predictedMs,
     actualMs,
-    startTime,
+    startTime: t.startTime,
     endTime,
-    pctDiff: pct
+    pctDiff: pct,
   };
+}
+
+function stopTimer() {
+  if (!activeTimer) return;
+  clearActiveIntervals();
+  const entry = logEntryFromTimer(activeTimer, activeElapsed());
+  activeTimer = null;
+  saveActive();
 
   logs.unshift(entry);
   saveLogs();
@@ -1001,12 +1112,60 @@ function stopTimer() {
   showResult(entry);
   renderLog();
   stopBackgroundGraph();
+  hideActiveTimerUI();
+}
 
-  document.getElementById('timer-display').classList.remove('visible');
-  document.getElementById('task-input').disabled = false;
-  document.getElementById('estimate-input').disabled = false;
-  document.getElementById('start-btn').disabled = false;
+function pauseActiveTimer() {
+  if (!activeTimer) return;
+  activeTimer.accumulatedMs += Date.now() - activeTimer.lastResumeAt;
+  activeTimer.lastResumeAt = null;
+  pausedTimers.unshift({
+    id: activeTimer.id,
+    task: activeTimer.task,
+    predictedMs: activeTimer.predictedMs,
+    startTime: activeTimer.startTime,
+    accumulatedMs: activeTimer.accumulatedMs,
+  });
+  activeTimer = null;
+  clearActiveIntervals();
+  saveActive();
+  savePaused();
+  hideActiveTimerUI();
+  document.getElementById('input-section').style.display = '';
+  renderLog();
+}
 
+function resumePausedTimer(id) {
+  if (activeTimer) pauseActiveTimer();
+  const idx = pausedTimers.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  const t = pausedTimers.splice(idx, 1)[0];
+  savePaused();
+  activeTimer = {
+    id: t.id,
+    task: t.task,
+    predictedMs: t.predictedMs,
+    startTime: t.startTime,
+    accumulatedMs: t.accumulatedMs,
+    lastResumeAt: Date.now(),
+    notified: false,
+  };
+  saveActive();
+  beginActiveTimerUI();
+  renderLog();
+}
+
+function stopPausedTimer(id) {
+  const idx = pausedTimers.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  const t = pausedTimers.splice(idx, 1)[0];
+  savePaused();
+  const entry = logEntryFromTimer(t, t.accumulatedMs);
+  logs.unshift(entry);
+  saveLogs();
+  showResult(entry);
+  renderLog();
+  drawBgGraph();
 }
 
 function showResult(entry) {
@@ -1039,13 +1198,43 @@ function showResult(entry) {
 
 function clearResult() {
   document.getElementById('result-panel').classList.remove('visible');
+  if (activeTimer) return;
   document.getElementById('input-section').style.display = '';
   document.getElementById('task-input').value = '';
   document.getElementById('estimate-input').value = '';
   document.getElementById('task-input').focus();
 }
 
+function renderPaused() {
+  const section = document.getElementById('paused-section');
+  const list = document.getElementById('paused-list');
+  if (!pausedTimers.length) {
+    section.classList.add('empty');
+    list.innerHTML = '';
+    return;
+  }
+  section.classList.remove('empty');
+  list.innerHTML = pausedTimers.map(t => {
+    const elapsed = t.accumulatedMs;
+    const over = elapsed > t.predictedMs;
+    const elapsedStr = formatDuration(elapsed);
+    const predStr = formatDuration(t.predictedMs);
+    const metaCls = over ? 'paused-over' : '';
+    return `<div class="paused-entry">
+      <div>
+        <div class="paused-task">${escHtml(t.task)}</div>
+        <div class="paused-meta"><span class="${metaCls}">${elapsedStr}</span> / est. ${predStr} · paused</div>
+      </div>
+      <div class="paused-actions">
+        <button class="btn btn-tiny accent" onclick="resumePausedTimer(${t.id})">Resume</button>
+        <button class="btn btn-tiny" onclick="stopPausedTimer(${t.id})">Stop</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function renderLog() {
+  renderPaused();
   const list = document.getElementById('log-list');
   const count = document.getElementById('log-count');
   const statsRow = document.getElementById('stats-row');
@@ -1435,11 +1624,27 @@ document.addEventListener('keydown', (e) => {
     else if (e.key === 'l') { e.preventDefault(); setTheme('light'); }
     else if (e.key === 'd') { e.preventDefault(); setTheme('dark'); }
     else if (e.key === 's' && timerInterval) { e.preventDefault(); stopTimer(); }
+    else if (e.key === 'p' && timerInterval) { e.preventDefault(); pauseActiveTimer(); }
     else if (e.key === 'n' && document.getElementById('result-panel').classList.contains('visible')) { e.preventDefault(); clearResult(); }
   }
 });
 
+function restoreActiveTimer() {
+  const raw = localStorage.getItem(ACTIVE_KEY);
+  if (!raw) return;
+  try {
+    const t = JSON.parse(raw);
+    if (!t || !t.task || !t.predictedMs) return;
+    activeTimer = t;
+    if (!activeTimer.lastResumeAt) activeTimer.lastResumeAt = Date.now();
+    beginActiveTimerUI();
+  } catch (e) {
+    localStorage.removeItem(ACTIVE_KEY);
+  }
+}
+
 renderLog();
+restoreActiveTimer();
 if (logs.length > 1) {
   resizeCanvas();
   drawBgGraph();
