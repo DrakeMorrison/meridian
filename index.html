@@ -927,12 +927,9 @@ const PAUSED_KEY = 'meridian_paused';
 let logs = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
 let pausedTimers = JSON.parse(localStorage.getItem(PAUSED_KEY) || '[]');
 let timerInterval = null;
-let timerNotified = false;
-let fibTimeout = null;
-let fibA = 1, fibB = 1;
 let editingIndex = -1;
 // Active timer: null when idle. Shape:
-// { id, task, predictedMs, startTime, accumulatedMs, lastResumeAt, notified }
+// { id, task, predictedMs, startTime, accumulatedMs, lastResumeAt }
 let activeTimer = null;
 
 const canvas = document.getElementById('bg-canvas');
@@ -956,60 +953,11 @@ function activeElapsed() {
   return activeTimer.accumulatedMs + (Date.now() - activeTimer.lastResumeAt);
 }
 
-// ── Service worker + ongoing notification ─────────────────────────
-let swRegistration = null;
-let lastOngoingUpdate = 0;
-const ONGOING_TAG = 'meridian-active';
-
+// ── Service worker (PWA install + offline) ─────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').then(reg => {
-      swRegistration = reg;
-      if (activeTimer) updateOngoingNotification(true);
-    }).catch(() => {});
+    navigator.serviceWorker.register('sw.js').catch(() => {});
   });
-}
-
-function ongoingBody() {
-  if (!activeTimer) return '';
-  const elapsed = activeElapsed();
-  const remaining = activeTimer.predictedMs - elapsed;
-  const elapsedStr = formatDuration(elapsed);
-  if (remaining < 0) return `${elapsedStr} elapsed · ${formatDuration(Math.abs(remaining))} over`;
-  return `${elapsedStr} elapsed · ${formatDuration(remaining)} left`;
-}
-
-function updateOngoingNotification(force) {
-  if (!activeTimer) return;
-  if (Notification.permission !== 'granted') return;
-  const reg = swRegistration || (navigator.serviceWorker && navigator.serviceWorker.ready ? null : null);
-  // Throttle: only refresh notification body every 30s unless forced (start/resume/over).
-  const now = Date.now();
-  if (!force && now - lastOngoingUpdate < 30000) return;
-  lastOngoingUpdate = now;
-  const opts = {
-    body: ongoingBody(),
-    tag: ONGOING_TAG,
-    icon: 'icon-192.png',
-    badge: 'icon-192.png',
-    requireInteraction: true,
-    silent: true,
-    renotify: false,
-    data: { kind: 'ongoing', taskId: activeTimer.id },
-  };
-  const title = `${activeTimer.task}`;
-  if (swRegistration) {
-    swRegistration.showNotification(title, opts).catch(() => {});
-  } else if (typeof Notification === 'function') {
-    try { new Notification(title, opts); } catch (e) {}
-  }
-}
-
-function closeOngoingNotification() {
-  if (!swRegistration) return;
-  swRegistration.getNotifications({ tag: ONGOING_TAG }).then(ns => {
-    ns.forEach(n => n.close());
-  }).catch(() => {});
 }
 
 function formatDuration(ms) {
@@ -1056,12 +1004,10 @@ function startTimer() {
     startTime: now,
     accumulatedMs: 0,
     lastResumeAt: now,
-    notified: false,
   };
   saveActive();
 
   beginActiveTimerUI();
-  Notification.requestPermission();
 }
 
 function beginActiveTimerUI() {
@@ -1076,12 +1022,10 @@ function beginActiveTimerUI() {
   document.getElementById('timer-meta').textContent = `est. ${(+estMin.toFixed(2))} min`;
   document.getElementById('timer-display').classList.add('visible');
 
-  timerNotified = activeTimer.notified;
   startBackgroundGraph();
   updateTimerDisplay();
   if (timerInterval) clearInterval(timerInterval);
   timerInterval = setInterval(updateTimerDisplay, 500);
-  updateOngoingNotification(true);
 }
 
 function updateTimerDisplay() {
@@ -1094,18 +1038,10 @@ function updateTimerDisplay() {
   if (isOver) {
     digits.textContent = '-' + formatDuration(Math.abs(remaining));
     digits.classList.add('over');
-    if (!activeTimer.notified && Notification.permission === 'granted') {
-      activeTimer.notified = true;
-      saveActive();
-      fireNotification(`Time's up`, activeTimer.task, { renotify: true });
-      fibA = 1; fibB = 1;
-      scheduleFibNotification();
-    }
   } else {
     digits.textContent = formatDuration(remaining);
     digits.classList.remove('over');
   }
-  updateOngoingNotification(false);
 
   const fill = document.getElementById('elapsed-fill');
   const pct = Math.min((elapsed / activeTimer.predictedMs) * 100, 100);
@@ -1116,40 +1052,8 @@ function updateTimerDisplay() {
   marker.style.left = '100%';
 }
 
-function fireNotification(title, body, extra) {
-  if (Notification.permission !== 'granted') return;
-  const opts = Object.assign({
-    body,
-    icon: 'icon-192.png',
-    badge: 'icon-192.png',
-    tag: ONGOING_TAG,
-    requireInteraction: true,
-  }, extra || {});
-  if (swRegistration) {
-    swRegistration.showNotification(title, opts).catch(() => {});
-    lastOngoingUpdate = Date.now();
-  } else {
-    try {
-      const n = new Notification(title, opts);
-      n.onclick = () => window.focus();
-    } catch (e) {}
-  }
-}
-
-function scheduleFibNotification() {
-  const delayMs = fibA * 60 * 1000;
-  const next = fibA + fibB;
-  fibA = fibB;
-  fibB = next;
-  fibTimeout = setTimeout(() => {
-    if (activeTimer) fireNotification('Still going', activeTimer.task, { renotify: true });
-    scheduleFibNotification();
-  }, delayMs);
-}
-
 function clearActiveIntervals() {
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
-  if (fibTimeout) { clearTimeout(fibTimeout); fibTimeout = null; }
 }
 
 function hideActiveTimerUI() {
@@ -1176,7 +1080,6 @@ function logEntryFromTimer(t, actualMs) {
 function stopTimer() {
   if (!activeTimer) return;
   clearActiveIntervals();
-  closeOngoingNotification();
   const entry = logEntryFromTimer(activeTimer, activeElapsed());
   activeTimer = null;
   saveActive();
@@ -1203,7 +1106,6 @@ function pauseActiveTimer() {
   });
   activeTimer = null;
   clearActiveIntervals();
-  closeOngoingNotification();
   saveActive();
   savePaused();
   hideActiveTimerUI();
@@ -1224,7 +1126,6 @@ function resumePausedTimer(id) {
     startTime: t.startTime,
     accumulatedMs: t.accumulatedMs,
     lastResumeAt: Date.now(),
-    notified: false,
   };
   saveActive();
   beginActiveTimerUI();
