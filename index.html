@@ -1108,6 +1108,8 @@ function pauseActiveTimer() {
   savePaused();
   hideActiveTimerUI();
   document.getElementById('input-section').style.display = '';
+  document.getElementById('task-input').value = '';
+  document.getElementById('estimate-input').value = '';
   renderLog();
 }
 
