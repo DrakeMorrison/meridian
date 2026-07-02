@@ -832,6 +832,7 @@
         <div class="section-label" style="margin-bottom:0">Session Log</div>
         <div class="log-count" id="log-count">0 entries</div>
       </div>
+      <button class="btn btn-tiny" id="summary-btn" onclick="copyDailySummary()" title="Copy today's sessions as Slack-ready text">⧉ Dail<span class="key">y</span> Summary</button>
     </div>
 
     <div class="stats-row" id="stats-row" style="display:none">
@@ -1331,6 +1332,73 @@ function exportLog() {
   a.click();
 }
 
+// ── Daily summary (Slack-ready) ────────────────────────────────────
+function formatDurationHuman(ms) {
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 1) return '<1m';
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
+}
+
+function buildDailySummary() {
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const todays = logs
+    .filter(e => e.endTime >= dayStart.getTime())
+    .sort((a, b) => a.startTime - b.startTime);
+  if (!todays.length) return null;
+
+  const dateStr = new Date().toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
+  const lines = [`*Daily Summary — ${dateStr}*`, ''];
+  todays.forEach(e => {
+    const sign = e.pctDiff > 0 ? '+' : '';
+    lines.push(`• ${e.task} — ${formatDurationHuman(e.actualMs)} (est. ${formatDurationHuman(e.predictedMs)}, ${sign}${e.pctDiff.toFixed(0)}%)`);
+  });
+
+  const totalMs = todays.reduce((s, e) => s + e.actualMs, 0);
+  const avgDelta = todays.reduce((s, e) => s + e.pctDiff, 0) / todays.length;
+  const avgSign = avgDelta >= 0 ? '+' : '';
+  lines.push('', `${todays.length} ${todays.length === 1 ? 'task' : 'tasks'} · ${formatDurationHuman(totalMs)} total · avg delta ${avgSign}${avgDelta.toFixed(1)}%`);
+  return lines.join('\n');
+}
+
+function copyToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    return navigator.clipboard.writeText(text);
+  }
+  return new Promise((resolve, reject) => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    ok ? resolve() : reject();
+  });
+}
+
+let summaryBtnTimeout = null;
+function flashSummaryBtn(msg) {
+  const btn = document.getElementById('summary-btn');
+  btn.innerHTML = msg;
+  if (summaryBtnTimeout) clearTimeout(summaryBtnTimeout);
+  summaryBtnTimeout = setTimeout(() => {
+    btn.innerHTML = '⧉ Dail<span class="key">y</span> Summary';
+  }, 1800);
+}
+
+function copyDailySummary() {
+  const summary = buildDailySummary();
+  if (!summary) { flashSummaryBtn('No sessions today'); return; }
+  copyToClipboard(summary)
+    .then(() => flashSummaryBtn('✓ Copied'))
+    .catch(() => flashSummaryBtn('Copy failed'));
+}
+
 function importCSV(input) {
   const file = input.files[0];
   input.value = '';
@@ -1597,6 +1665,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'e') { e.preventDefault(); exportLog(); }
     else if (e.key === 'i') { e.preventDefault(); document.getElementById('import-input').click(); }
     else if (e.key === 'c') { e.preventDefault(); clearLog(); }
+    else if (e.key === 'y') { e.preventDefault(); copyDailySummary(); }
     else if (e.key === 'a') { e.preventDefault(); setTheme('auto'); }
     else if (e.key === 'l') { e.preventDefault(); setTheme('light'); }
     else if (e.key === 'd') { e.preventDefault(); setTheme('dark'); }
