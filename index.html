@@ -329,6 +329,7 @@
     background: color-mix(in srgb, var(--accent2) 6%, transparent);
     border-left: 2px solid var(--accent2-dim);
   }
+  .paused-info { min-width: 0; }
   .paused-task {
     font-family: var(--data);
     font-size: 0.95rem;
@@ -344,6 +345,9 @@
     font-size: 0.7rem;
     color: var(--muted);
     letter-spacing: 0.05em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .paused-meta .paused-over { color: var(--danger); }
   .paused-actions {
@@ -362,6 +366,22 @@
     animation: fadeIn 0.4s ease;
   }
   .result-panel.visible { display: block; }
+  .result-graph-wrap {
+    display: none;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+  .result-graph-wrap.visible { display: block; }
+  .result-graph-wrap .rc-label {
+    font-size: 0.75rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+  #result-graph { display: block; width: 100%; }
 
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   @keyframes entryHighlight { 0% { box-shadow: none; } 20% { box-shadow: 0 0 18px 8px var(--entry-halo); } 100% { box-shadow: none; } }
@@ -816,6 +836,10 @@
         <div class="rc-val" id="res-end"></div>
       </div>
     </div>
+    <div class="result-graph-wrap" id="result-graph-wrap">
+      <div class="rc-label">Calibration history</div>
+      <canvas id="result-graph"></canvas>
+    </div>
     <div class="result-actions">
       <button class="btn btn-ghost" onclick="clearResult()"><span class="key">N</span>EW TASK</button>
     </div>
@@ -1172,10 +1196,13 @@ function showResult(entry) {
   document.getElementById('res-end').textContent = formatTime(entry.endTime);
 
   panel.classList.add('visible');
+  drawResultGraph(entry);
 }
 
 function clearResult() {
+  resultGraphEntry = null;
   document.getElementById('result-panel').classList.remove('visible');
+  document.getElementById('result-graph-wrap').classList.remove('visible');
   if (activeTimer) return;
   document.getElementById('input-section').style.display = '';
   document.getElementById('task-input').value = '';
@@ -1199,7 +1226,7 @@ function renderPaused() {
     const predStr = formatDuration(t.predictedMs);
     const metaCls = over ? 'paused-over' : '';
     return `<div class="paused-entry">
-      <div>
+      <div class="paused-info">
         <div class="paused-task">${escHtml(t.task)}</div>
         <div class="paused-meta"><span class="${metaCls}">${elapsedStr}</span> / est. ${predStr} · paused</div>
       </div>
@@ -1465,18 +1492,25 @@ let hoveredGraphPoint = null;
 
 function drawBgGraph() {
   resizeCanvas();
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  graphPoints = [];
-  if (logs.length < 2) return;
+  graphPoints = renderGraph(ctx, canvas.width, canvas.height, {
+    hoverEntry: hoveredGraphPoint ? hoveredGraphPoint.entry : null,
+  });
+}
 
-  const W = canvas.width, H = canvas.height;
+// Shared renderer for the full-screen background graph and the result-panel
+// snapshot. Returns hit-test points for the canvas it drew into.
+function renderGraph(g, W, H, opts = {}) {
+  g.clearRect(0, 0, W, H);
+  const points = [];
+  if (logs.length < 2) return points;
+
   const pts = logs.slice().reverse();
   const pcts = pts.map(e => e.pctDiff);
   const minV = Math.min(...pcts, -20);
   const maxV = Math.max(...pcts, 20);
   const range = maxV - minV || 40;
 
-  const pad = { left: 40, right: 40, top: 60, bottom: 60 };
+  const pad = opts.pad || { left: 40, right: 40, top: 60, bottom: 60 };
   const plotW = W - pad.left - pad.right;
   const plotH = H - pad.top - pad.bottom;
 
@@ -1493,59 +1527,91 @@ function drawBgGraph() {
   const overDot  = isLight ? 'rgba(157,0,6,0.75)'    : 'rgba(251,73,52,0.7)';
   const exactDot = isLight ? 'rgba(181,118,20,0.85)' : 'rgba(250,189,47,0.75)';
   const zeroLbl  = isLight ? 'rgba(80,73,69,0.5)'    : 'rgba(212,190,152,0.3)';
-  ctx.strokeStyle = zeroCol;
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4,4]);
-  ctx.beginPath();
-  ctx.moveTo(pad.left, zeroY);
-  ctx.lineTo(W - pad.right, zeroY);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  g.strokeStyle = zeroCol;
+  g.lineWidth = 1;
+  g.setLineDash([4,4]);
+  g.beginPath();
+  g.moveTo(pad.left, zeroY);
+  g.lineTo(W - pad.right, zeroY);
+  g.stroke();
+  g.setLineDash([]);
 
   if (pts.length > 1) {
-    ctx.beginPath();
-    ctx.moveTo(toX(0), toY(pcts[0]));
+    g.beginPath();
+    g.moveTo(toX(0), toY(pcts[0]));
     for (let i = 1; i < pts.length; i++) {
       const x0 = toX(i-1), y0 = toY(pcts[i-1]);
       const x1 = toX(i), y1 = toY(pcts[i]);
       const cx = (x0 + x1) / 2;
-      ctx.bezierCurveTo(cx, y0, cx, y1, x1, y1);
+      g.bezierCurveTo(cx, y0, cx, y1, x1, y1);
     }
-    ctx.strokeStyle = lineCol;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    g.strokeStyle = lineCol;
+    g.lineWidth = 1.5;
+    g.stroke();
 
-    const grad = ctx.createLinearGradient(0, pad.top, 0, H - pad.bottom);
+    const grad = g.createLinearGradient(0, pad.top, 0, H - pad.bottom);
     grad.addColorStop(0, fillTop);
     grad.addColorStop(1, 'rgba(184,187,38,0)');
-    ctx.lineTo(toX(pts.length-1), zeroY);
-    ctx.lineTo(toX(0), zeroY);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
+    g.lineTo(toX(pts.length-1), zeroY);
+    g.lineTo(toX(0), zeroY);
+    g.closePath();
+    g.fillStyle = grad;
+    g.fill();
   }
 
   pts.forEach((e, i) => {
     const x = toX(i), y = toY(e.pctDiff);
     const isOver = e.pctDiff > 0;
     const color = Math.abs(e.pctDiff) < 2 ? exactDot : isOver ? overDot : underDot;
-    const isHovered = hoveredGraphPoint && hoveredGraphPoint.entry === e;
-    if (isHovered) {
-      ctx.beginPath();
-      ctx.arc(x, y, 9, 0, Math.PI * 2);
-      ctx.fillStyle = color.replace(/[\d.]+\)$/, '0.15)');
-      ctx.fill();
+    const isHovered = opts.hoverEntry === e;
+    const isNew = opts.highlightId != null && e.id === opts.highlightId;
+    if (isHovered || isNew) {
+      g.beginPath();
+      g.arc(x, y, 9, 0, Math.PI * 2);
+      g.fillStyle = color.replace(/[\d.]+\)$/, '0.15)');
+      g.fill();
     }
-    ctx.beginPath();
-    ctx.arc(x, y, isHovered ? 5 : 3.5, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    graphPoints.push({ x, y, entry: e });
+    if (isNew) {
+      g.beginPath();
+      g.arc(x, y, 7, 0, Math.PI * 2);
+      g.strokeStyle = color;
+      g.lineWidth = 1;
+      g.stroke();
+    }
+    g.beginPath();
+    g.arc(x, y, (isHovered || isNew) ? 5 : 3.5, 0, Math.PI * 2);
+    g.fillStyle = color;
+    g.fill();
+    points.push({ x, y, entry: e });
   });
 
-  ctx.fillStyle = zeroLbl;
-  ctx.font = '10px "IBM Plex Mono", monospace';
-  ctx.fillText('0%', pad.left - 28, zeroY + 4);
+  g.fillStyle = zeroLbl;
+  g.font = '10px "IBM Plex Mono", monospace';
+  g.fillText('0%', pad.left - 28, zeroY + 4);
+  return points;
+}
+
+let resultGraphEntry = null;
+
+function drawResultGraph(entry) {
+  resultGraphEntry = entry || resultGraphEntry;
+  const wrap = document.getElementById('result-graph-wrap');
+  const c = document.getElementById('result-graph');
+  if (!resultGraphEntry || logs.length < 2) { wrap.classList.remove('visible'); return; }
+  wrap.classList.add('visible');
+  const dpr = window.devicePixelRatio || 1;
+  const w = wrap.clientWidth;
+  const h = 110;
+  if (!w) return;
+  c.width = w * dpr;
+  c.height = h * dpr;
+  c.style.height = h + 'px';
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  renderGraph(g, w, h, {
+    pad: { left: 34, right: 14, top: 14, bottom: 14 },
+    highlightId: resultGraphEntry.id,
+  });
 }
 
 function startBackgroundGraph() {
@@ -1559,6 +1625,7 @@ function stopBackgroundGraph() {
 
 window.addEventListener('resize', () => {
   if (canvas.classList.contains('active') || logs.length > 1) drawBgGraph();
+  if (resultGraphEntry && document.getElementById('result-panel').classList.contains('visible')) drawResultGraph();
 });
 
 document.getElementById('task-input').addEventListener('keydown', (e) => {
@@ -1885,6 +1952,7 @@ function applyTheme(resolved) {
     document.querySelector('meta[name="theme-color"]').setAttribute('content', '#1d2021');
   }
   if (logs.length > 1) drawBgGraph();
+  if (resultGraphEntry && document.getElementById('result-panel').classList.contains('visible')) drawResultGraph();
 }
 
 function updateSwitcherUI(pref) {
