@@ -381,7 +381,7 @@
     text-transform: uppercase;
     margin-bottom: 0.5rem;
   }
-  #result-graph { display: block; width: 100%; }
+  #result-graph { display: block; width: 100%; cursor: crosshair; }
 
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   @keyframes entryHighlight { 0% { box-shadow: none; } 20% { box-shadow: 0 0 18px 8px var(--entry-halo); } 100% { box-shadow: none; } }
@@ -837,7 +837,7 @@
       </div>
     </div>
     <div class="result-graph-wrap" id="result-graph-wrap">
-      <div class="rc-label">Calibration history</div>
+      <div class="rc-label" title="Average absolute estimate miss over your last 7 completed tasks — lower is better">Calibration · avg miss, last 7 tasks</div>
       <canvas id="result-graph"></canvas>
     </div>
     <div class="result-actions">
@@ -1201,6 +1201,8 @@ function showResult(entry) {
 
 function clearResult() {
   resultGraphEntry = null;
+  resultGraphPoints = [];
+  resultHoverIdx = null;
   document.getElementById('result-panel').classList.remove('visible');
   document.getElementById('result-graph-wrap').classList.remove('visible');
   if (activeTimer) return;
@@ -1497,8 +1499,8 @@ function drawBgGraph() {
   });
 }
 
-// Shared renderer for the full-screen background graph and the result-panel
-// snapshot. Returns hit-test points for the canvas it drew into.
+// Renderer for the full-screen background graph. Returns hit-test points
+// for the canvas it drew into.
 function renderGraph(g, W, H, opts = {}) {
   g.clearRect(0, 0, W, H);
   const points = [];
@@ -1510,7 +1512,7 @@ function renderGraph(g, W, H, opts = {}) {
   const maxV = Math.max(...pcts, 20);
   const range = maxV - minV || 40;
 
-  const pad = opts.pad || { left: 40, right: 40, top: 60, bottom: 60 };
+  const pad = { left: 40, right: 40, top: 60, bottom: 60 };
   const plotW = W - pad.left - pad.right;
   const plotH = H - pad.top - pad.bottom;
 
@@ -1564,22 +1566,14 @@ function renderGraph(g, W, H, opts = {}) {
     const isOver = e.pctDiff > 0;
     const color = Math.abs(e.pctDiff) < 2 ? exactDot : isOver ? overDot : underDot;
     const isHovered = opts.hoverEntry === e;
-    const isNew = opts.highlightId != null && e.id === opts.highlightId;
-    if (isHovered || isNew) {
+    if (isHovered) {
       g.beginPath();
       g.arc(x, y, 9, 0, Math.PI * 2);
       g.fillStyle = color.replace(/[\d.]+\)$/, '0.15)');
       g.fill();
     }
-    if (isNew) {
-      g.beginPath();
-      g.arc(x, y, 7, 0, Math.PI * 2);
-      g.strokeStyle = color;
-      g.lineWidth = 1;
-      g.stroke();
-    }
     g.beginPath();
-    g.arc(x, y, (isHovered || isNew) ? 5 : 3.5, 0, Math.PI * 2);
+    g.arc(x, y, isHovered ? 5 : 3.5, 0, Math.PI * 2);
     g.fillStyle = color;
     g.fill();
     points.push({ x, y, entry: e });
@@ -1592,6 +1586,22 @@ function renderGraph(g, W, H, opts = {}) {
 }
 
 let resultGraphEntry = null;
+let resultGraphPoints = [];
+let resultHoverIdx = null;
+
+const CALIBRATION_WINDOW = 7;
+
+// Rolling average of the absolute estimate miss, oldest → newest. One value
+// per completed task; the window expands until it holds CALIBRATION_WINDOW.
+function calibrationSeries() {
+  const chrono = logs.slice().reverse();
+  return chrono.map((e, i) => {
+    const from = Math.max(0, i - CALIBRATION_WINDOW + 1);
+    let sum = 0;
+    for (let j = from; j <= i; j++) sum += Math.abs(chrono[j].pctDiff);
+    return { entry: e, avgMiss: sum / (i - from + 1) };
+  });
+}
 
 function drawResultGraph(entry) {
   resultGraphEntry = entry || resultGraphEntry;
@@ -1601,17 +1611,96 @@ function drawResultGraph(entry) {
   wrap.classList.add('visible');
   const dpr = window.devicePixelRatio || 1;
   const w = wrap.clientWidth;
-  const h = 110;
+  const h = 140;
   if (!w) return;
   c.width = w * dpr;
   c.height = h * dpr;
   c.style.height = h + 'px';
   const g = c.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  renderGraph(g, w, h, {
-    pad: { left: 34, right: 14, top: 14, bottom: 14 },
-    highlightId: resultGraphEntry.id,
+  resultGraphPoints = renderCalibrationGraph(g, w, h, resultHoverIdx);
+}
+
+function renderCalibrationGraph(g, W, H, hoverIdx) {
+  g.clearRect(0, 0, W, H);
+  const series = calibrationSeries();
+  if (series.length < 2) return [];
+
+  const maxV = Math.max(20, ...series.map(p => p.avgMiss));
+  const step = maxV <= 25 ? 10 : maxV <= 50 ? 25 : 50;
+  const top = Math.ceil(maxV / step) * step;
+
+  const pad = { left: 38, right: 48, top: 12, bottom: 12 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+  const toX = (i) => pad.left + (i / (series.length - 1)) * plotW;
+  const toY = (v) => pad.top + (1 - v / top) * plotH;
+
+  const isLight = document.body.classList.contains('light');
+  const lineCol = isLight ? 'rgba(121,116,14,0.9)'  : 'rgba(184,187,38,0.85)';
+  const washCol = isLight ? 'rgba(121,116,14,0.10)' : 'rgba(184,187,38,0.10)';
+  const gridCol = isLight ? 'rgba(80,73,69,0.18)'   : 'rgba(212,190,152,0.12)';
+  const tickInk = isLight ? 'rgba(124,111,100,0.9)' : 'rgba(146,131,116,0.9)';
+  const labelInk = isLight ? '#3c3836' : '#d5c4a1';
+  const surface = isLight ? '#f9f5d7' : '#1d2021';
+
+  // hairline gridlines at 0 (perfect), mid, and top; muted right-aligned ticks
+  g.font = '9px "IBM Plex Mono", monospace';
+  g.textAlign = 'right';
+  [0, top / 2, top].forEach(v => {
+    const y = toY(v);
+    g.strokeStyle = gridCol;
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(pad.left, y);
+    g.lineTo(W - pad.right, y);
+    g.stroke();
+    g.fillStyle = tickInk;
+    g.fillText(Math.round(v) + '%', pad.left - 6, y + 3);
   });
+
+  // area wash down to the 0% baseline
+  g.beginPath();
+  series.forEach((p, i) => i ? g.lineTo(toX(i), toY(p.avgMiss)) : g.moveTo(toX(i), toY(p.avgMiss)));
+  g.lineTo(toX(series.length - 1), toY(0));
+  g.lineTo(toX(0), toY(0));
+  g.closePath();
+  g.fillStyle = washCol;
+  g.fill();
+
+  // the calibration line
+  g.beginPath();
+  series.forEach((p, i) => i ? g.lineTo(toX(i), toY(p.avgMiss)) : g.moveTo(toX(i), toY(p.avgMiss)));
+  g.strokeStyle = lineCol;
+  g.lineWidth = 2;
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  g.stroke();
+
+  const points = series.map((p, i) => ({ x: toX(i), y: toY(p.avgMiss), entry: p.entry, avgMiss: p.avgMiss }));
+
+  // hover: vertical crosshair + marker on the hovered point
+  if (hoverIdx != null && points[hoverIdx]) {
+    const hp = points[hoverIdx];
+    g.strokeStyle = gridCol;
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(hp.x, pad.top);
+    g.lineTo(hp.x, H - pad.bottom);
+    g.stroke();
+    g.beginPath(); g.arc(hp.x, hp.y, 5.5, 0, Math.PI * 2); g.fillStyle = surface; g.fill();
+    g.beginPath(); g.arc(hp.x, hp.y, 3.5, 0, Math.PI * 2); g.fillStyle = lineCol; g.fill();
+  }
+
+  // end dot (surface ring so it stays legible over the line) + current value
+  const last = points[points.length - 1];
+  g.beginPath(); g.arc(last.x, last.y, 6, 0, Math.PI * 2); g.fillStyle = surface; g.fill();
+  g.beginPath(); g.arc(last.x, last.y, 4, 0, Math.PI * 2); g.fillStyle = lineCol; g.fill();
+  g.textAlign = 'left';
+  g.font = '10px "IBM Plex Mono", monospace';
+  g.fillStyle = labelInk;
+  g.fillText(Math.round(last.avgMiss) + '%', last.x + 9, Math.min(Math.max(last.y + 3, pad.top + 8), H - pad.bottom - 2));
+  return points;
 }
 
 function startBackgroundGraph() {
@@ -1704,6 +1793,44 @@ canvas.addEventListener('mousemove', (e) => {
 canvas.addEventListener('mouseleave', () => {
   graphTooltip.style.display = 'none';
   if (hoveredGraphPoint !== null) { hoveredGraphPoint = null; drawBgGraph(); }
+});
+
+const resultGraphCanvas = document.getElementById('result-graph');
+resultGraphCanvas.addEventListener('mousemove', (e) => {
+  if (!resultGraphPoints.length) return;
+  const rect = resultGraphCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  let idx = null, best = Infinity;
+  resultGraphPoints.forEach((p, i) => {
+    const d = Math.abs(p.x - mx);
+    if (d < best) { best = d; idx = i; }
+  });
+  if (idx === null || best > 40) {
+    if (resultHoverIdx !== null) { resultHoverIdx = null; drawResultGraph(); }
+    graphTooltip.style.display = 'none';
+    return;
+  }
+  if (resultHoverIdx !== idx) { resultHoverIdx = idx; drawResultGraph(); }
+  const pt = resultGraphPoints[idx];
+  const entry = pt.entry;
+  const pct = entry.pctDiff;
+  const sign = pct >= 0 ? '+' : '';
+  const cls = Math.abs(pct) < 2 ? 'exact' : pct > 0 ? 'over' : 'under';
+  graphTooltip.innerHTML =
+    `<div class="tt-task">${escHtml(entry.task)}</div>` +
+    `<div class="tt-meta">${formatDateShort(entry.startTime)} · avg miss ${pt.avgMiss.toFixed(1)}%</div>` +
+    `<div class="tt-delta ${cls}">${sign}${pct.toFixed(1)}% this task</div>`;
+  const tw = 270, th = 70, margin = 12;
+  const left = e.clientX + tw + margin > window.innerWidth ? e.clientX - tw - margin : e.clientX + margin;
+  const topPos = e.clientY + th + margin > window.innerHeight ? e.clientY - th - margin : e.clientY + margin;
+  graphTooltip.style.left = left + 'px';
+  graphTooltip.style.top = topPos + 'px';
+  graphTooltip.style.display = 'block';
+});
+
+resultGraphCanvas.addEventListener('mouseleave', () => {
+  graphTooltip.style.display = 'none';
+  if (resultHoverIdx !== null) { resultHoverIdx = null; drawResultGraph(); }
 });
 
 document.addEventListener('keydown', (e) => {
