@@ -212,6 +212,15 @@
   .start-btn:active { transform: scale(0.97); }
   .start-btn:disabled { opacity: 0.3; cursor: default; transform: none; }
 
+  .log-past-btn {
+    font-size: 0.6875rem;
+    letter-spacing: 0.15em;
+    padding: 0.6rem 0.9rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .log-past-btn:disabled { opacity: 0.3; cursor: default; }
+
   .timer-display {
     display: none;
     flex-direction: column;
@@ -599,6 +608,15 @@
   .log-delta.under { color: var(--accent); }
   .log-delta.over { color: var(--danger); }
   .log-delta.exact { color: var(--accent2); }
+  .log-delta.unplanned {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    font-weight: 400;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding-top: 0.4rem;
+  }
 
   .log-entry:not(.log-entry-editing) {
     cursor: pointer;
@@ -765,6 +783,7 @@
     .time-row { flex-direction: column; align-items: stretch; }
     .time-row .input-block { margin-bottom: 1rem; }
     .start-btn { width: 100%; }
+    .log-past-btn { width: 100%; margin-top: 0.5rem; }
   }
 </style>
 </head>
@@ -797,6 +816,7 @@
         <input type="number" id="estimate-input" placeholder="30" min="0.1" step="0.5" />
       </div>
       <button class="btn start-btn" id="start-btn" onclick="startTimer()">START ↵</button>
+      <button class="btn log-past-btn" id="log-past-btn" onclick="logPastTask()" title="Log a task you already did — estimate field holds how long it took; no prediction is recorded">log past (<span class="key">r</span>)</button>
     </div>
   </div>
 
@@ -976,6 +996,12 @@ function activeElapsed() {
   return activeTimer.accumulatedMs + (Date.now() - activeTimer.lastResumeAt);
 }
 
+// Entries that had an advance prediction — retrodictions (pctDiff == null)
+// are excluded from all calibration graphs and stats.
+function predictedLogs() {
+  return logs.filter(e => e.pctDiff != null);
+}
+
 // ── Service worker (PWA install + offline) ─────────────────────────
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -1033,12 +1059,61 @@ function startTimer() {
   beginActiveTimerUI();
 }
 
+// Retrodiction: a task logged after the fact — no prediction existed, so
+// predictedMs/pctDiff are null and it never feeds the calibration stats.
+function logPastTask() {
+  const taskEl = document.getElementById('task-input');
+  const estEl = document.getElementById('estimate-input');
+  const task = taskEl.value.trim();
+  const tookMin = parseFloat(estEl.value);
+
+  if (!task || !tookMin || tookMin <= 0) {
+    if (!task) taskEl.style.borderBottomColor = 'var(--danger)';
+    if (!tookMin || tookMin <= 0) estEl.style.borderBottomColor = 'var(--danger)';
+    setTimeout(() => {
+      taskEl.style.borderBottomColor = '';
+      estEl.style.borderBottomColor = '';
+    }, 1500);
+    return;
+  }
+
+  const now = Date.now();
+  const actualMs = tookMin * 60 * 1000;
+  logs.unshift({
+    id: now,
+    task,
+    predictedMs: null,
+    actualMs,
+    startTime: now - actualMs,
+    endTime: now,
+    pctDiff: null,
+  });
+  saveLogs();
+
+  taskEl.value = '';
+  estEl.value = '';
+  renderLog();
+  drawBgGraph();
+  flashLogPastBtn();
+}
+
+let logPastBtnTimeout = null;
+function flashLogPastBtn() {
+  const btn = document.getElementById('log-past-btn');
+  btn.innerHTML = '✓ logged';
+  if (logPastBtnTimeout) clearTimeout(logPastBtnTimeout);
+  logPastBtnTimeout = setTimeout(() => {
+    btn.innerHTML = 'log past (<span class="key">r</span>)';
+  }, 1500);
+}
+
 function beginActiveTimerUI() {
   const estMin = activeTimer.predictedMs / 60000;
   document.getElementById('input-section').style.display = 'none';
   document.getElementById('task-input').disabled = true;
   document.getElementById('estimate-input').disabled = true;
   document.getElementById('start-btn').disabled = true;
+  document.getElementById('log-past-btn').disabled = true;
   document.getElementById('result-panel').classList.remove('visible');
 
   document.getElementById('running-task-label').textContent = activeTimer.task.toUpperCase();
@@ -1084,6 +1159,7 @@ function hideActiveTimerUI() {
   document.getElementById('task-input').disabled = false;
   document.getElementById('estimate-input').disabled = false;
   document.getElementById('start-btn').disabled = false;
+  document.getElementById('log-past-btn').disabled = false;
 }
 
 function logEntryFromTimer(t, actualMs) {
@@ -1246,7 +1322,7 @@ function renderLog() {
   const count = document.getElementById('log-count');
   const statsRow = document.getElementById('stats-row');
 
-  document.body.classList.toggle('has-graph', logs.length >= 2);
+  document.body.classList.toggle('has-graph', predictedLogs().length >= 2);
   count.textContent = logs.length + ' ' + (logs.length === 1 ? 'entry' : 'entries');
 
   if (logs.length === 0) {
@@ -1257,12 +1333,17 @@ function renderLog() {
 
   statsRow.style.display = 'grid';
 
-  const avgDelta = logs.reduce((s, e) => s + e.pctDiff, 0) / logs.length;
-  const brier = logs.reduce((s, e) => s + Math.pow(e.pctDiff / 100, 2), 0) / logs.length;
-
+  const predicted = predictedLogs();
   document.getElementById('stat-count').textContent = logs.length;
-  document.getElementById('stat-avg').textContent = (avgDelta >= 0 ? '+' : '') + avgDelta.toFixed(1) + '%';
-  document.getElementById('stat-bias').textContent = brier.toFixed(3);
+  if (predicted.length) {
+    const avgDelta = predicted.reduce((s, e) => s + e.pctDiff, 0) / predicted.length;
+    const brier = predicted.reduce((s, e) => s + Math.pow(e.pctDiff / 100, 2), 0) / predicted.length;
+    document.getElementById('stat-avg').textContent = (avgDelta >= 0 ? '+' : '') + avgDelta.toFixed(1) + '%';
+    document.getElementById('stat-bias').textContent = brier.toFixed(3);
+  } else {
+    document.getElementById('stat-avg').textContent = '—';
+    document.getElementById('stat-bias').textContent = '—';
+  }
 
   list.innerHTML = logs.map((e, i) => {
     if (i === editingIndex) {
@@ -1273,10 +1354,10 @@ function renderLog() {
           <div class="log-edit-fields">
             <div>
               <div class="log-edit-label">Est. (min)</div>
-              <input type="number" id="edit-pred" class="edit-input-num" value="${(e.predictedMs/60000).toFixed(2)}" min="0.01" step="0.01">
+              <input type="number" id="edit-pred" class="edit-input-num" ${e.pctDiff == null ? 'placeholder="—" disabled' : `value="${(e.predictedMs/60000).toFixed(2)}"`} min="0.01" step="0.01">
             </div>
             <div>
-              <div class="log-edit-label">Actual (min)</div>
+              <div class="log-edit-label">${e.pctDiff == null ? 'Took (min, estimated)' : 'Actual (min)'}</div>
               <input type="number" id="edit-actual" class="edit-input-num" value="${(e.actualMs/60000).toFixed(2)}" min="0.01" step="0.01">
             </div>
           </div>
@@ -1288,6 +1369,15 @@ function renderLog() {
             <button class="btn btn-tiny danger" onclick="deleteEntry(${i})">Delete</button>
           </div>
         </div>
+      </div>`;
+    }
+    if (e.pctDiff == null) {
+      return `<div class="log-entry" id="entry-${e.id}" onclick="editEntry(${i})">
+        <div>
+          <div class="log-task">${escHtml(e.task)}</div>
+          <div class="log-meta">${formatDateShort(e.startTime)} · ${formatTime(e.startTime)} – ${formatTime(e.endTime)} · took ~${formatDuration(e.actualMs)} (est.)</div>
+        </div>
+        <div class="log-delta unplanned">unplanned</div>
       </div>`;
     }
     const pct = e.pctDiff;
@@ -1315,13 +1405,20 @@ function cancelEdit() {
 
 function saveEdit(i) {
   const task = document.getElementById('edit-task').value.trim();
-  const predMin = parseFloat(document.getElementById('edit-pred').value);
   const actualMin = parseFloat(document.getElementById('edit-actual').value);
-  if (!task || !(predMin > 0) || !(actualMin > 0)) return;
-  logs[i].task = task;
-  logs[i].predictedMs = predMin * 60000;
-  logs[i].actualMs = actualMin * 60000;
-  logs[i].pctDiff = ((logs[i].actualMs - logs[i].predictedMs) / logs[i].predictedMs) * 100;
+  if (!task || !(actualMin > 0)) return;
+  if (logs[i].pctDiff == null) {
+    logs[i].task = task;
+    logs[i].actualMs = actualMin * 60000;
+    logs[i].startTime = logs[i].endTime - logs[i].actualMs;
+  } else {
+    const predMin = parseFloat(document.getElementById('edit-pred').value);
+    if (!(predMin > 0)) return;
+    logs[i].task = task;
+    logs[i].predictedMs = predMin * 60000;
+    logs[i].actualMs = actualMin * 60000;
+    logs[i].pctDiff = ((logs[i].actualMs - logs[i].predictedMs) / logs[i].predictedMs) * 100;
+  }
   editingIndex = -1;
   saveLogs();
   renderLog();
@@ -1347,9 +1444,9 @@ function exportLog() {
   logs.forEach(e => {
     lines.push([
       `"${e.task.replace(/"/g,'""')}"`,
-      (e.predictedMs / 60000).toFixed(2),
+      e.pctDiff == null ? '' : (e.predictedMs / 60000).toFixed(2),
       (e.actualMs / 60000).toFixed(2),
-      e.pctDiff.toFixed(2),
+      e.pctDiff == null ? '' : e.pctDiff.toFixed(2),
       new Date(e.startTime).toISOString(),
       new Date(e.endTime).toISOString()
     ].join(','));
@@ -1374,22 +1471,33 @@ function formatDurationHuman(ms) {
 function buildDailySummary() {
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
-  const todays = logs
-    .filter(e => e.endTime >= dayStart.getTime())
-    .sort((a, b) => a.startTime - b.startTime);
+  const finished = logs.filter(e => e.startTime >= dayStart.getTime());
+  const paused = pausedTimers.filter(t => t.startTime >= dayStart.getTime());
+  const todays = finished.concat(paused).sort((a, b) => a.startTime - b.startTime);
   if (!todays.length) return null;
 
   const dateStr = new Date().toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
   const lines = [`*Daily Summary — ${dateStr}*`, ''];
   todays.forEach(e => {
-    const sign = e.pctDiff > 0 ? '+' : '';
-    lines.push(`• ${e.task} — ${formatDurationHuman(e.actualMs)} (est. ${formatDurationHuman(e.predictedMs)}, ${sign}${e.pctDiff.toFixed(0)}%)`);
+    if (e.endTime === undefined) {
+      lines.push(`• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. ${formatDurationHuman(e.predictedMs)}, paused)`);
+    } else if (e.pctDiff == null) {
+      lines.push(`• ${e.task} — ~${formatDurationHuman(e.actualMs)} (unplanned, duration estimated)`);
+    } else {
+      const sign = e.pctDiff > 0 ? '+' : '';
+      lines.push(`• ${e.task} — ${formatDurationHuman(e.actualMs)} (est. ${formatDurationHuman(e.predictedMs)}, ${sign}${e.pctDiff.toFixed(0)}%)`);
+    }
   });
 
-  const totalMs = todays.reduce((s, e) => s + e.actualMs, 0);
-  const avgDelta = todays.reduce((s, e) => s + e.pctDiff, 0) / todays.length;
-  const avgSign = avgDelta >= 0 ? '+' : '';
-  lines.push('', `${todays.length} ${todays.length === 1 ? 'task' : 'tasks'} · ${formatDurationHuman(totalMs)} total · avg delta ${avgSign}${avgDelta.toFixed(1)}%`);
+  const totalMs = todays.reduce((s, e) => s + (e.endTime === undefined ? e.accumulatedMs : e.actualMs), 0);
+  let footer = `${todays.length} ${todays.length === 1 ? 'task' : 'tasks'} · ${formatDurationHuman(totalMs)} total`;
+  const withPred = finished.filter(e => e.pctDiff != null);
+  if (withPred.length) {
+    const avgDelta = withPred.reduce((s, e) => s + e.pctDiff, 0) / withPred.length;
+    const avgSign = avgDelta >= 0 ? '+' : '';
+    footer += ` · avg delta ${avgSign}${avgDelta.toFixed(1)}%`;
+  }
+  lines.push('', footer);
   return lines.join('\n');
 }
 
@@ -1455,10 +1563,15 @@ function importCSV(input) {
       const actualMin = parseFloat(fields[2]);
       const startTime = new Date(fields[4].trim()).getTime();
       const endTime = new Date(fields[5].trim()).getTime();
-      if (!task || isNaN(predMin) || isNaN(actualMin) || isNaN(startTime) || isNaN(endTime)) continue;
-      const predictedMs = predMin * 60000;
+      if (!task || isNaN(actualMin) || isNaN(startTime) || isNaN(endTime)) continue;
       const actualMs = actualMin * 60000;
-      imported.push({ id: startTime, task, predictedMs, actualMs, pctDiff: ((actualMs - predictedMs) / predictedMs) * 100, startTime, endTime });
+      if (isNaN(predMin)) {
+        // retrodiction: logged after the fact, no prediction
+        imported.push({ id: startTime, task, predictedMs: null, actualMs, pctDiff: null, startTime, endTime });
+      } else {
+        const predictedMs = predMin * 60000;
+        imported.push({ id: startTime, task, predictedMs, actualMs, pctDiff: ((actualMs - predictedMs) / predictedMs) * 100, startTime, endTime });
+      }
     }
     if (!imported.length) { alert('No valid entries found in CSV.'); return; }
     const merge = logs.length > 0 && confirm(`Merge ${imported.length} imported entries with existing log?\nCancel to replace instead.`);
@@ -1504,9 +1617,8 @@ function drawBgGraph() {
 function renderGraph(g, W, H, opts = {}) {
   g.clearRect(0, 0, W, H);
   const points = [];
-  if (logs.length < 2) return points;
-
-  const pts = logs.slice().reverse();
+  const pts = predictedLogs().reverse();
+  if (pts.length < 2) return points;
   const pcts = pts.map(e => e.pctDiff);
   const minV = Math.min(...pcts, -20);
   const maxV = Math.max(...pcts, 20);
@@ -1594,7 +1706,7 @@ const CALIBRATION_WINDOW = 7;
 // Rolling average of the absolute estimate miss, oldest → newest. One value
 // per completed task; the window expands until it holds CALIBRATION_WINDOW.
 function calibrationSeries() {
-  const chrono = logs.slice().reverse();
+  const chrono = predictedLogs().reverse();
   return chrono.map((e, i) => {
     const from = Math.max(0, i - CALIBRATION_WINDOW + 1);
     let sum = 0;
@@ -1607,7 +1719,7 @@ function drawResultGraph(entry) {
   resultGraphEntry = entry || resultGraphEntry;
   const wrap = document.getElementById('result-graph-wrap');
   const c = document.getElementById('result-graph');
-  if (!resultGraphEntry || logs.length < 2) { wrap.classList.remove('visible'); return; }
+  if (!resultGraphEntry || predictedLogs().length < 2) { wrap.classList.remove('visible'); return; }
   wrap.classList.add('visible');
   const dpr = window.devicePixelRatio || 1;
   const w = wrap.clientWidth;
@@ -1721,7 +1833,7 @@ document.getElementById('task-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('estimate-input').focus();
 });
 document.getElementById('estimate-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.stopPropagation(); startTimer(); }
+  if (e.key === 'Enter') { e.stopPropagation(); e.shiftKey ? logPastTask() : startTimer(); }
 });
 
 canvas.addEventListener('click', () => {
@@ -1866,6 +1978,7 @@ document.addEventListener('keydown', (e) => {
     else if (e.key === 's' && timerInterval) { e.preventDefault(); stopTimer(); }
     else if (e.key === 'p' && timerInterval) { e.preventDefault(); pauseActiveTimer(); }
     else if (e.key === 'n' && document.getElementById('result-panel').classList.contains('visible')) { e.preventDefault(); clearResult(); }
+    else if (e.key === 'r' && !timerInterval && document.getElementById('input-section').style.display !== 'none') { e.preventDefault(); logPastTask(); }
   }
 });
 
@@ -1989,9 +2102,9 @@ async function runBackupNow(silent = false) {
   logs.forEach(e => {
     csvLines.push([
       '"' + e.task.replace(/"/g, '""') + '"',
-      (e.predictedMs / 60000).toFixed(2),
+      e.pctDiff == null ? '' : (e.predictedMs / 60000).toFixed(2),
       (e.actualMs / 60000).toFixed(2),
-      e.pctDiff.toFixed(2),
+      e.pctDiff == null ? '' : e.pctDiff.toFixed(2),
       new Date(e.startTime).toISOString(),
       new Date(e.endTime).toISOString()
     ].join(','));
