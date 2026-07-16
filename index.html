@@ -857,7 +857,7 @@
       </div>
     </div>
     <div class="result-graph-wrap" id="result-graph-wrap">
-      <div class="rc-label" title="Average absolute estimate miss over your last 7 completed tasks — lower is better">Calibration · avg miss, last 7 tasks</div>
+      <div class="rc-label" title="Your full prediction history — each point is your average absolute estimate miss over the 7 tasks ending there. Lower is better">Calibration · 7-task rolling avg miss</div>
       <canvas id="result-graph"></canvas>
     </div>
     <div class="result-actions">
@@ -1930,7 +1930,7 @@ resultGraphCanvas.addEventListener('mousemove', (e) => {
   const cls = Math.abs(pct) < 2 ? 'exact' : pct > 0 ? 'over' : 'under';
   graphTooltip.innerHTML =
     `<div class="tt-task">${escHtml(entry.task)}</div>` +
-    `<div class="tt-meta">${formatDateShort(entry.startTime)} · avg miss ${pt.avgMiss.toFixed(1)}%</div>` +
+    `<div class="tt-meta">${formatDateShort(entry.startTime)} · 7-task avg miss ${pt.avgMiss.toFixed(1)}%</div>` +
     `<div class="tt-delta ${cls}">${sign}${pct.toFixed(1)}% this task</div>`;
   const tw = 270, th = 70, margin = 12;
   const left = e.clientX + tw + margin > window.innerWidth ? e.clientX - tw - margin : e.clientX + margin;
