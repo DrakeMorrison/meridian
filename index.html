@@ -1318,6 +1318,7 @@ function renderPaused() {
 
 function renderLog() {
   renderPaused();
+  updateSummaryBtn();
   const list = document.getElementById('log-list');
   const count = document.getElementById('log-count');
   const statsRow = document.getElementById('stats-row');
@@ -1468,15 +1469,32 @@ function formatDurationHuman(ms) {
   return `${m}m`;
 }
 
+function summaryDay() {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  let day = todayStart;
+  let isYesterday = false;
+  let inDay = e => e.startTime >= day.getTime();
+  let finished = logs.filter(inDay);
+  let paused = pausedTimers.filter(inDay);
+  if (!finished.length && !paused.length) {
+    // posting after midnight: nothing yet today, so summarize yesterday
+    day = new Date(todayStart);
+    day.setDate(day.getDate() - 1);
+    inDay = e => e.startTime >= day.getTime() && e.startTime < todayStart.getTime();
+    finished = logs.filter(inDay);
+    paused = pausedTimers.filter(inDay);
+    isYesterday = finished.length > 0 || paused.length > 0;
+  }
+  return {day, finished, paused, isYesterday};
+}
+
 function buildDailySummary() {
-  const dayStart = new Date();
-  dayStart.setHours(0, 0, 0, 0);
-  const finished = logs.filter(e => e.startTime >= dayStart.getTime());
-  const paused = pausedTimers.filter(t => t.startTime >= dayStart.getTime());
+  const {day, finished, paused} = summaryDay();
   const todays = finished.concat(paused).sort((a, b) => a.startTime - b.startTime);
   if (!todays.length) return null;
 
-  const dateStr = new Date().toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
+  const dateStr = day.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
   const lines = [`*Daily Summary — ${dateStr}*`, ''];
   todays.forEach(e => {
     if (e.endTime === undefined) {
@@ -1518,14 +1536,28 @@ function copyToClipboard(text) {
   });
 }
 
+function updateSummaryBtn() {
+  const btn = document.getElementById('summary-btn');
+  if (summaryDay().isYesterday) {
+    btn.innerHTML = '⧉ <span class="key">Y</span>esterday’s Summary';
+    btn.title = 'Copy yesterday’s sessions as Slack-ready text';
+  } else {
+    btn.innerHTML = '⧉ Dail<span class="key">y</span> Summary';
+    btn.title = 'Copy today’s sessions as Slack-ready text';
+  }
+}
+
+// Refresh label when returning to the tab (e.g. after midnight)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) updateSummaryBtn();
+});
+
 let summaryBtnTimeout = null;
 function flashSummaryBtn(msg) {
   const btn = document.getElementById('summary-btn');
   btn.innerHTML = msg;
   if (summaryBtnTimeout) clearTimeout(summaryBtnTimeout);
-  summaryBtnTimeout = setTimeout(() => {
-    btn.innerHTML = '⧉ Dail<span class="key">y</span> Summary';
-  }, 1800);
+  summaryBtnTimeout = setTimeout(updateSummaryBtn, 1800);
 }
 
 function copyDailySummary() {
