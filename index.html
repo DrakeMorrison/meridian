@@ -967,8 +967,64 @@
 const DB_KEY = 'meridian_logs';
 const ACTIVE_KEY = 'meridian_active';
 const PAUSED_KEY = 'meridian_paused';
-let logs = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
-let pausedTimers = JSON.parse(localStorage.getItem(PAUSED_KEY) || '[]');
+function loadJSON(key, fallback) {
+  const raw = localStorage.getItem(key);
+  if (raw == null) return fallback;
+  try { return JSON.parse(raw); }
+  catch (e) {
+    // keep the unreadable raw value around for manual recovery instead of silently losing it
+    try { localStorage.setItem(key + '_corrupt', raw); } catch (e2) {}
+    return fallback;
+  }
+}
+
+function finiteOrNull(v) {
+  return typeof v === 'number' && isFinite(v) ? v : null;
+}
+
+// A single malformed entry (e.g. iOS killing the suspended page mid-save) must
+// never take down the whole log — repair what's recoverable, drop only garbage.
+function sanitizeLogs(raw) {
+  if (!Array.isArray(raw)) return [];
+  const clean = [];
+  for (const e of raw) {
+    if (!e || typeof e !== 'object') continue;
+    const entry = {
+      id: 0,
+      task: typeof e.task === 'string' ? e.task : (e.task == null ? '(untitled)' : String(e.task)),
+      predictedMs: finiteOrNull(e.predictedMs),
+      actualMs: finiteOrNull(e.actualMs),
+      startTime: finiteOrNull(e.startTime),
+      endTime: finiteOrNull(e.endTime),
+      pctDiff: finiteOrNull(e.pctDiff),
+    };
+    if (entry.actualMs == null && entry.startTime != null && entry.endTime != null) entry.actualMs = entry.endTime - entry.startTime;
+    if (entry.startTime == null && entry.endTime != null && entry.actualMs != null) entry.startTime = entry.endTime - entry.actualMs;
+    if (entry.endTime == null && entry.startTime != null && entry.actualMs != null) entry.endTime = entry.startTime + entry.actualMs;
+    if (entry.actualMs == null && entry.startTime == null && entry.endTime == null) continue;
+    if (!(entry.predictedMs > 0)) { entry.predictedMs = null; entry.pctDiff = null; }
+    else if (entry.pctDiff == null && entry.actualMs != null) entry.pctDiff = ((entry.actualMs - entry.predictedMs) / entry.predictedMs) * 100;
+    entry.id = finiteOrNull(e.id) != null ? e.id : (entry.startTime != null ? entry.startTime : clean.length);
+    clean.push(entry);
+  }
+  return clean;
+}
+
+function sanitizePaused(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(t => t && typeof t === 'object' && t.task != null && finiteOrNull(t.predictedMs) != null)
+    .map(t => ({
+      id: finiteOrNull(t.id) != null ? t.id : (finiteOrNull(t.startTime) || 0),
+      task: typeof t.task === 'string' ? t.task : String(t.task),
+      predictedMs: t.predictedMs,
+      startTime: finiteOrNull(t.startTime) || 0,
+      accumulatedMs: finiteOrNull(t.accumulatedMs) || 0,
+    }));
+}
+
+let logs = sanitizeLogs(loadJSON(DB_KEY, []));
+let pausedTimers = sanitizePaused(loadJSON(PAUSED_KEY, []));
 let timerInterval = null;
 let editingIndex = -1;
 // Active timer: null when idle. Shape:
@@ -1018,12 +1074,20 @@ function formatDuration(ms) {
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
+// Guard against invalid dates: some iOS WebKit versions throw a RangeError
+// from toLocale*String(options) where other engines return "Invalid Date".
 function formatTime(ts) {
-  return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  if (ts == null) return '—';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 }
 
 function formatDateShort(ts) {
-  return new Date(ts).toLocaleDateString([], {month:'short', day:'numeric'});
+  if (ts == null) return '—';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString([], {month:'short', day:'numeric'});
 }
 
 
@@ -1347,6 +1411,20 @@ function renderLog() {
   }
 
   list.innerHTML = logs.map((e, i) => {
+    // one unrenderable entry must not blank the whole list
+    try { return renderLogEntry(e, i); }
+    catch (err) {
+      return `<div class="log-entry" onclick="editEntry(${i})">
+        <div>
+          <div class="log-task">(unreadable entry)</div>
+          <div class="log-meta">tap to edit or delete</div>
+        </div>
+      </div>`;
+    }
+  }).join('');
+}
+
+function renderLogEntry(e, i) {
     if (i === editingIndex) {
       return `<div class="log-entry log-entry-editing">
         <div>
@@ -1391,7 +1469,6 @@ function renderLog() {
       </div>
       <div class="log-delta ${cls}">${sign}${pct.toFixed(1)}%</div>
     </div>`;
-  }).join('');
 }
 
 function editEntry(i) {
@@ -2019,9 +2096,12 @@ function restoreActiveTimer() {
   if (!raw) return;
   try {
     const t = JSON.parse(raw);
-    if (!t || !t.task || !t.predictedMs) return;
+    if (!t || !t.task || !(finiteOrNull(t.predictedMs) > 0)) return;
     activeTimer = t;
-    if (!activeTimer.lastResumeAt) activeTimer.lastResumeAt = Date.now();
+    activeTimer.task = String(activeTimer.task);
+    if (finiteOrNull(activeTimer.accumulatedMs) == null) activeTimer.accumulatedMs = 0;
+    if (finiteOrNull(activeTimer.lastResumeAt) == null) activeTimer.lastResumeAt = Date.now();
+    if (finiteOrNull(activeTimer.startTime) == null) activeTimer.startTime = Date.now() - activeTimer.accumulatedMs;
     beginActiveTimerUI();
   } catch (e) {
     localStorage.removeItem(ACTIVE_KEY);
@@ -2038,7 +2118,7 @@ if (logs.length > 1) {
 
 // ── Backup system ────────────────────────────────────────────────
 const BACKUP_KEY = 'meridian_backup_cfg';
-let backupCfg = JSON.parse(localStorage.getItem(BACKUP_KEY) || 'null') || {
+let backupCfg = loadJSON(BACKUP_KEY, null) || {
   enabled: false,
   freq: 'weekly',
   lastBackup: null,
