@@ -776,6 +776,139 @@
     letter-spacing: 0.1em;
   }
 
+  .report-year-select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem;
+    outline: none;
+    cursor: pointer;
+  }
+
+  /* ── Report mode (shared link view) ── */
+  #report-ui { display: none; }
+  body.report-mode #report-ui { display: block; }
+  body.report-mode .app { display: none; }
+
+  .report-head {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.5rem 2rem;
+    pointer-events: none;
+  }
+  .report-head-left { display: flex; align-items: baseline; gap: 1.25rem; flex-wrap: wrap; }
+  .report-title {
+    font-family: var(--display);
+    font-size: 0.8125rem;
+    letter-spacing: 0.25em;
+    color: var(--orange);
+    text-transform: uppercase;
+  }
+  .report-range {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+  .report-app-link {
+    pointer-events: auto;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--border);
+    transition: color 0.2s;
+    white-space: nowrap;
+  }
+  .report-app-link:hover { color: var(--text); }
+
+  .report-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem 1rem;
+    background: color-mix(in srgb, var(--bg) 78%, transparent);
+    backdrop-filter: blur(6px);
+    border-top: 1px solid var(--border);
+    pointer-events: none;
+  }
+  .report-stats {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.5rem 2.5rem;
+  }
+  .report-stat { text-align: center; min-width: 5.5rem; pointer-events: auto; cursor: help; }
+  .report-stat .rs-val {
+    font-family: var(--data);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 0.3rem;
+  }
+  .report-stat .rs-val.over { color: var(--danger); }
+  .report-stat .rs-val.under { color: var(--accent); }
+  .report-stat .rs-label {
+    font-family: var(--display);
+    font-size: 0.625rem;
+    color: var(--muted);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .report-note {
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    line-height: 1.7;
+    text-align: center;
+    max-width: 44rem;
+  }
+  .report-note b { color: var(--text-dim); font-weight: 400; }
+
+  .report-error {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 0.8125rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    line-height: 2;
+    padding: 2rem;
+  }
+
+  @media (max-width: 480px) {
+    .report-head { padding: 1rem 1rem; }
+    .report-bar { gap: 0.5rem 1.25rem; }
+    .report-stat { min-width: 4.5rem; }
+    .report-stat .rs-val { font-size: 1.15rem; }
+  }
+
 
   @media (max-width: 480px) {
     html { font-size: 17px; }
@@ -912,6 +1045,28 @@
   <footer>all data stored locally · no server · no cloud</footer>
 </div>
 
+<div id="report-ui">
+  <div class="report-head">
+    <div class="report-head-left">
+      <div class="logo">MERIDIAN</div>
+      <div class="report-title" id="report-title"></div>
+      <div class="report-range" id="report-range"></div>
+    </div>
+    <a class="report-app-link" id="report-app-link" href="./">track your own →</a>
+  </div>
+  <div class="report-bar">
+    <div class="report-stats">
+      <div class="report-stat" title="Every task logged that year, including unplanned ones"><div class="rs-val" id="rs-count">—</div><div class="rs-label">Tasks</div></div>
+      <div class="report-stat" title="Total actual time across all tasks"><div class="rs-val" id="rs-time">—</div><div class="rs-label">Total Time</div></div>
+      <div class="report-stat" title="Signed average error — overruns and underruns cancel out, so this shows bias: positive means estimates ran long overall. Closer to zero is better"><div class="rs-val" id="rs-avg">—</div><div class="rs-label">Avg Delta</div></div>
+      <div class="report-stat" title="Average absolute error — nothing cancels, so this shows accuracy: how far off a typical estimate was, in either direction. Lower is better"><div class="rs-val" id="rs-miss">—</div><div class="rs-label">Avg Miss</div></div>
+      <div class="report-stat" title="Mean squared error, with each delta as a fraction — squaring makes one big blowout cost more than several small misses. Lower is better"><div class="rs-val" id="rs-brier">—</div><div class="rs-label">Brier Score</div></div>
+    </div>
+    <div class="report-note"><b>avg delta</b> is signed, so overruns and underruns cancel — it measures bias (closer to zero is better). <b>avg miss</b> averages the absolute error, so nothing cancels — it measures accuracy. <b>brier score</b> squares each error, so one big blowout costs more than several small misses (lower is better).</div>
+  </div>
+  <div class="report-error" id="report-error">This report link is invalid or damaged.<br>Ask for a fresh link, or start tracking your own time at <a class="report-app-link" href="./">meridian</a>.</div>
+</div>
+
 <div class="settings-overlay" id="settings-overlay" onclick="closeSettings()"></div>
 <div class="settings-panel" id="settings-panel">
   <div class="settings-head">
@@ -942,6 +1097,18 @@
     </div>
 
     <div>
+      <div class="settings-section-title">Report</div>
+      <div class="settings-row">
+        <select id="report-year" class="report-year-select"></select>
+      </div>
+      <div class="settings-row">
+        <button class="btn btn-tiny accent" id="report-copy-btn" onclick="copyReportLink()">⧉ Copy Share Link</button>
+        <button class="btn btn-tiny" id="report-open-btn" onclick="openReport()">Open Report</button>
+      </div>
+      <div class="export-note">Yearly report: the full graph, hoverable, with summary stats. The link holds that year's data compressed in the URL itself — nothing is uploaded, but anyone with the link can see the tasks in it.</div>
+    </div>
+
+    <div>
       <div class="settings-section-title">Backup</div>
       <div class="auto-export-row no-divider">
         <div class="toggle-label">Auto-backup</div>
@@ -967,6 +1134,12 @@
 const DB_KEY = 'meridian_logs';
 const ACTIVE_KEY = 'meridian_active';
 const PAUSED_KEY = 'meridian_paused';
+
+// Shared report link: '#report=<tag>.<base64url payload>'. In report mode the
+// page renders someone else's data read-only — the viewer's own log is never
+// touched or saved.
+const REPORT_MODE = location.hash.startsWith('#report=');
+let reportLogs = [];
 function loadJSON(key, fallback) {
   const raw = localStorage.getItem(key);
   if (raw == null) return fallback;
@@ -1055,7 +1228,7 @@ function activeElapsed() {
 // Entries that had an advance prediction — retrodictions (pctDiff == null)
 // are excluded from all calibration graphs and stats.
 function predictedLogs() {
-  return logs.filter(e => e.pctDiff != null);
+  return (REPORT_MODE ? reportLogs : logs).filter(e => e.pctDiff != null);
 }
 
 // ── Service worker (PWA install + offline) ─────────────────────────
@@ -1733,7 +1906,11 @@ function renderGraph(g, W, H, opts = {}) {
   const maxV = Math.max(...pcts, 20);
   const range = maxV - minV || 40;
 
-  const pad = { left: 40, right: 40, top: 60, bottom: 60 };
+  // report mode has fixed chrome (header + stats bar) the plot must clear;
+  // the bar's height varies with viewport width, so measure it
+  const pad = REPORT_MODE
+    ? { left: 40, right: 40, top: 110, bottom: (document.querySelector('.report-bar').offsetHeight || 110) + 40 }
+    : { left: 40, right: 40, top: 60, bottom: 60 };
   const plotW = W - pad.left - pad.right;
   const plotH = H - pad.top - pad.bottom;
 
@@ -1934,7 +2111,7 @@ function stopBackgroundGraph() {
 }
 
 window.addEventListener('resize', () => {
-  if (canvas.classList.contains('active') || logs.length > 1) drawBgGraph();
+  if (REPORT_MODE || canvas.classList.contains('active') || logs.length > 1) drawBgGraph();
   if (resultGraphEntry && document.getElementById('result-panel').classList.contains('visible')) drawResultGraph();
 });
 
@@ -1946,6 +2123,8 @@ document.getElementById('estimate-input').addEventListener('keydown', (e) => {
 });
 
 canvas.addEventListener('click', () => {
+  // no session log to jump to in a shared report — hover only
+  if (REPORT_MODE) return;
   if (hoveredGraphPoint) {
     const entry = hoveredGraphPoint.entry;
     const pct = entry.pctDiff;
@@ -2055,6 +2234,7 @@ resultGraphCanvas.addEventListener('mouseleave', () => {
 });
 
 document.addEventListener('keydown', (e) => {
+  if (REPORT_MODE) return;
   if (e.key === 'Escape') {
     if (document.body.classList.contains('graph-mode')) {
       document.body.classList.remove('graph-mode');
@@ -2108,12 +2288,16 @@ function restoreActiveTimer() {
   }
 }
 
-renderLog();
-restoreActiveTimer();
-if (logs.length > 1) {
-  resizeCanvas();
-  drawBgGraph();
-  canvas.style.opacity = '0.6';
+if (REPORT_MODE) {
+  initReportMode();
+} else {
+  renderLog();
+  restoreActiveTimer();
+  if (logs.length > 1) {
+    resizeCanvas();
+    drawBgGraph();
+    canvas.style.opacity = '0.6';
+  }
 }
 
 // ── Backup system ────────────────────────────────────────────────
@@ -2274,20 +2458,165 @@ function dismissReminder() {
   renderBackupUI();
 }
 
-// Periodic check every hour while app is open
-setInterval(checkBackupDue, 3600000);
-
-renderBackupUI();
-checkBackupDue();
+// Periodic check every hour while app is open (never in a shared report view)
+if (!REPORT_MODE) {
+  setInterval(checkBackupDue, 3600000);
+  renderBackupUI();
+  checkBackupDue();
+}
 
 // ── Settings panel ───────────────────────────────────────────────
 function openSettings() {
+  populateReportYears();
   document.getElementById('settings-overlay').classList.add('open');
   document.getElementById('settings-panel').classList.add('open');
 }
 function closeSettings() {
   document.getElementById('settings-overlay').classList.remove('open');
   document.getElementById('settings-panel').classList.remove('open');
+}
+
+// ── Yearly report (shareable link) ───────────────────────────────
+// The whole year's entries travel inside the URL fragment: JSON → deflate →
+// base64url. The fragment is never sent to the server, so sharing stays
+// serverless like everything else here.
+
+function b64urlEncode(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlDecode(s) {
+  const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/'));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function pipeBytes(bytes, stream) {
+  const out = new Blob([bytes]).stream().pipeThrough(stream);
+  return new Uint8Array(await new Response(out).arrayBuffer());
+}
+
+function populateReportYears() {
+  const sel = document.getElementById('report-year');
+  const prev = sel.value;
+  const years = [...new Set(
+    logs.filter(e => e.startTime != null).map(e => new Date(e.startTime).getFullYear())
+  )].sort((a, b) => b - a);
+  sel.innerHTML = years.length
+    ? years.map(y => `<option value="${y}">${y}</option>`).join('')
+    : '<option value="">no data yet</option>';
+  if (years.includes(+prev)) sel.value = prev;
+}
+
+async function buildReportLink() {
+  const year = parseInt(document.getElementById('report-year').value);
+  if (!year) return null;
+  const from = new Date(year, 0, 1).getTime();
+  const to = new Date(year + 1, 0, 1).getTime();
+  const entries = logs
+    .filter(e => e.startTime != null && e.startTime >= from && e.startTime < to)
+    .sort((a, b) => a.startTime - b.startTime);
+  if (!entries.length) return null;
+  const rows = entries.map(e => [
+    e.task,
+    e.pctDiff == null ? null : +(e.predictedMs / 60000).toFixed(2),
+    +(e.actualMs / 60000).toFixed(2),
+    e.startTime,
+    e.endTime,
+  ]);
+  const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, y: year, t: rows }));
+  let tag = '0', packed = bytes;
+  if (typeof CompressionStream === 'function') {
+    try {
+      packed = await pipeBytes(bytes, new CompressionStream('deflate-raw'));
+      tag = '1';
+    } catch (e) { /* fall back to uncompressed */ }
+  }
+  return location.href.split('#')[0] + '#report=' + tag + '.' + b64urlEncode(packed);
+}
+
+let reportBtnTimeout = null;
+function flashReportBtn(msg) {
+  const btn = document.getElementById('report-copy-btn');
+  btn.innerHTML = msg;
+  if (reportBtnTimeout) clearTimeout(reportBtnTimeout);
+  reportBtnTimeout = setTimeout(() => { btn.innerHTML = '⧉ Copy Share Link'; }, 1800);
+}
+
+async function copyReportLink() {
+  const link = await buildReportLink();
+  if (!link) { flashReportBtn('No tasks that year'); return; }
+  copyToClipboard(link)
+    .then(() => flashReportBtn('✓ Copied'))
+    .catch(() => flashReportBtn('Copy failed'));
+}
+
+async function openReport() {
+  const link = await buildReportLink();
+  if (!link) { flashReportBtn('No tasks that year'); return; }
+  window.open(link, '_blank');
+}
+
+async function initReportMode() {
+  document.body.classList.add('report-mode', 'graph-mode', 'has-graph');
+  try {
+    const raw = location.hash.slice('#report='.length);
+    const dot = raw.indexOf('.');
+    const tag = raw.slice(0, dot);
+    const bytes = b64urlDecode(raw.slice(dot + 1));
+    const text = new TextDecoder().decode(
+      tag === '1' ? await pipeBytes(bytes, new DecompressionStream('deflate-raw')) : bytes
+    );
+    const payload = JSON.parse(text);
+    if (!payload || payload.v !== 1 || !Array.isArray(payload.t) || !payload.t.length) throw new Error('bad payload');
+    reportLogs = sanitizeLogs(payload.t.map(r => ({
+      id: r[3],
+      task: r[0],
+      predictedMs: r[1] == null ? null : r[1] * 60000,
+      actualMs: r[2] * 60000,
+      startTime: r[3],
+      endTime: r[4],
+      pctDiff: null,
+    }))).sort((a, b) => b.startTime - a.startTime);
+    if (!reportLogs.length) throw new Error('empty payload');
+    renderReport(payload.y);
+  } catch (e) {
+    document.getElementById('report-error').style.display = 'flex';
+  }
+}
+
+function renderReport(year) {
+  const all = reportLogs;
+  const predicted = all.filter(e => e.pctDiff != null);
+
+  document.getElementById('report-title').textContent = year + ' · Yearly Report';
+  const times = all.map(e => e.startTime).filter(t => t != null);
+  document.getElementById('report-range').textContent =
+    formatDateShort(Math.min(...times)) + ' – ' + formatDateShort(Math.max(...times));
+
+  document.getElementById('rs-count').textContent = all.length;
+  document.getElementById('rs-time').textContent =
+    formatDurationHuman(all.reduce((s, e) => s + (e.actualMs || 0), 0));
+
+  const avgEl = document.getElementById('rs-avg');
+  if (predicted.length) {
+    const avgDelta = predicted.reduce((s, e) => s + e.pctDiff, 0) / predicted.length;
+    const avgMiss = predicted.reduce((s, e) => s + Math.abs(e.pctDiff), 0) / predicted.length;
+    const brier = predicted.reduce((s, e) => s + Math.pow(e.pctDiff / 100, 2), 0) / predicted.length;
+    avgEl.textContent = (avgDelta >= 0 ? '+' : '') + avgDelta.toFixed(1) + '%';
+    avgEl.className = 'rs-val ' + (Math.abs(avgDelta) < 2 ? '' : avgDelta > 0 ? 'over' : 'under');
+    document.getElementById('rs-miss').textContent = avgMiss.toFixed(1) + '%';
+    document.getElementById('rs-brier').textContent = brier.toFixed(3);
+  }
+
+  resizeCanvas();
+  drawBgGraph();
+  canvas.classList.add('active');
 }
 
 // ── Theme ─────────────────────────────────────────────────────────
@@ -2303,7 +2632,7 @@ function applyTheme(resolved) {
     document.body.classList.remove('light');
     document.querySelector('meta[name="theme-color"]').setAttribute('content', '#1d2021');
   }
-  if (logs.length > 1) drawBgGraph();
+  if (REPORT_MODE || logs.length > 1) drawBgGraph();
   if (resultGraphEntry && document.getElementById('result-panel').classList.contains('visible')) drawResultGraph();
 }
 
