@@ -1140,13 +1140,46 @@ const PAUSED_KEY = 'meridian_paused';
 // touched or saved.
 const REPORT_MODE = location.hash.startsWith('#report=');
 let reportLogs = [];
+
+// Mobile WebKit can detach localStorage while the app is suspended in the
+// background — every read/write then throws until the process is killed.
+// All storage goes through these helpers so a dead backend degrades to
+// in-memory state (retried on resume) instead of killing whatever handler
+// touched storage first.
+const pendingWrites = new Map();
+
+function storageGet(key) {
+  try { return localStorage.getItem(key); }
+  catch (e) { return pendingWrites.has(key) ? pendingWrites.get(key) : null; }
+}
+
+function storageSet(key, val) {
+  pendingWrites.set(key, val);
+  try { localStorage.setItem(key, val); pendingWrites.delete(key); } catch (e) {}
+}
+
+function storageRemove(key) {
+  pendingWrites.set(key, null);
+  try { localStorage.removeItem(key); pendingWrites.delete(key); } catch (e) {}
+}
+
+function flushPendingWrites() {
+  for (const [key, val] of [...pendingWrites]) {
+    try {
+      if (val == null) localStorage.removeItem(key);
+      else localStorage.setItem(key, val);
+      pendingWrites.delete(key);
+    } catch (e) { break; }
+  }
+}
+
 function loadJSON(key, fallback) {
-  const raw = localStorage.getItem(key);
+  const raw = storageGet(key);
   if (raw == null) return fallback;
   try { return JSON.parse(raw); }
   catch (e) {
     // keep the unreadable raw value around for manual recovery instead of silently losing it
-    try { localStorage.setItem(key + '_corrupt', raw); } catch (e2) {}
+    storageSet(key + '_corrupt', raw);
     return fallback;
   }
 }
@@ -1208,16 +1241,16 @@ const canvas = document.getElementById('bg-canvas');
 const ctx = canvas.getContext('2d');
 
 function saveLogs() {
-  localStorage.setItem(DB_KEY, JSON.stringify(logs));
+  storageSet(DB_KEY, JSON.stringify(logs));
 }
 
 function saveActive() {
-  if (activeTimer) localStorage.setItem(ACTIVE_KEY, JSON.stringify(activeTimer));
-  else localStorage.removeItem(ACTIVE_KEY);
+  if (activeTimer) storageSet(ACTIVE_KEY, JSON.stringify(activeTimer));
+  else storageRemove(ACTIVE_KEY);
 }
 
 function savePaused() {
-  localStorage.setItem(PAUSED_KEY, JSON.stringify(pausedTimers));
+  storageSet(PAUSED_KEY, JSON.stringify(pausedTimers));
 }
 
 function activeElapsed() {
@@ -2272,7 +2305,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 function restoreActiveTimer() {
-  const raw = localStorage.getItem(ACTIVE_KEY);
+  const raw = storageGet(ACTIVE_KEY);
   if (!raw) return;
   try {
     const t = JSON.parse(raw);
@@ -2284,7 +2317,7 @@ function restoreActiveTimer() {
     if (finiteOrNull(activeTimer.startTime) == null) activeTimer.startTime = Date.now() - activeTimer.accumulatedMs;
     beginActiveTimerUI();
   } catch (e) {
-    localStorage.removeItem(ACTIVE_KEY);
+    storageRemove(ACTIVE_KEY);
   }
 }
 
@@ -2311,7 +2344,7 @@ let backupCfg = loadJSON(BACKUP_KEY, null) || {
 };
 
 function saveBackupCfg() {
-  localStorage.setItem(BACKUP_KEY, JSON.stringify(backupCfg));
+  storageSet(BACKUP_KEY, JSON.stringify(backupCfg));
 }
 
 function toggleBackup() {
@@ -2624,6 +2657,10 @@ const THEME_KEY = 'meridian_theme';
 
 const systemLight = window.matchMedia('(prefers-color-scheme: light)');
 
+// The preference lives in memory so theme changes keep working (and the
+// system-scheme listener keeps working) even when localStorage is dead.
+let themePref = storageGet(THEME_KEY) || 'auto';
+
 function applyTheme(resolved) {
   if (resolved === 'light') {
     document.body.classList.add('light');
@@ -2642,20 +2679,46 @@ function updateSwitcherUI(pref) {
   document.getElementById('theme-dark').classList.toggle('active', pref === 'dark');
 }
 
-function setTheme(pref) {
-  localStorage.setItem(THEME_KEY, pref);
-  const resolved = pref === 'auto' ? (systemLight.matches ? 'light' : 'dark') : pref;
+function applyThemeFromPref() {
+  const resolved = themePref === 'auto' ? (systemLight.matches ? 'light' : 'dark') : themePref;
   applyTheme(resolved);
-  updateSwitcherUI(pref);
+  updateSwitcherUI(themePref);
+}
+
+function setTheme(pref) {
+  themePref = pref;
+  applyThemeFromPref();
+  storageSet(THEME_KEY, pref);
 }
 
 systemLight.addEventListener('change', () => {
-  if ((localStorage.getItem(THEME_KEY) || 'auto') === 'auto') {
-    applyTheme(systemLight.matches ? 'light' : 'dark');
-  }
+  if (themePref === 'auto') applyThemeFromPref();
 });
 
-setTheme(localStorage.getItem(THEME_KEY) || 'auto');
+applyThemeFromPref();
+
+// ── Resume re-sync ────────────────────────────────────────────────
+// Coming back from a long background suspend on mobile can leave the app
+// visually wedged: the OS appearance-snapshot dance leaves the wrong theme
+// applied, backdrop-filter compositing layers resume unpainted (hiding the
+// whole app column while the background canvas still shows), and canvases
+// can come back blank. Re-assert everything from in-memory state, and retry
+// any writes that failed while storage was detached.
+function resyncAfterResume() {
+  flushPendingWrites();
+  applyThemeFromPref(); // also redraws the graphs
+  if (!REPORT_MODE && editingIndex === -1) renderLog();
+  const layers = document.querySelectorAll('.app, .timer-display, .result-panel, .report-bar');
+  layers.forEach(el => { el.style.backdropFilter = 'none'; });
+  requestAnimationFrame(() => {
+    layers.forEach(el => { el.style.backdropFilter = ''; });
+  });
+}
+
+window.addEventListener('pageshow', (e) => { if (e.persisted) resyncAfterResume(); });
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) resyncAfterResume();
+});
 </script>
 </body>
 </html>
