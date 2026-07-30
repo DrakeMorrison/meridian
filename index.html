@@ -1757,17 +1757,20 @@ function summaryDay() {
   todayStart.setHours(0, 0, 0, 0);
   let day = todayStart;
   let isYesterday = false;
-  let inDay = e => e.startTime >= day.getTime();
-  let finished = logs.filter(inDay);
-  let paused = pausedTimers.filter(inDay);
-  if (!finished.length && !paused.length) {
-    // posting after midnight: nothing yet today, so summarize yesterday
-    day = new Date(todayStart);
-    day.setDate(day.getDate() - 1);
-    inDay = e => e.startTime >= day.getTime() && e.startTime < todayStart.getTime();
-    finished = logs.filter(inDay);
-    paused = pausedTimers.filter(inDay);
-    isYesterday = finished.length > 0 || paused.length > 0;
+  let finished = logs.filter(e => e.startTime >= day.getTime());
+  // Paused timers are open work regardless of when they were started —
+  // filtering them by start day would drop any task carried over midnight.
+  const paused = pausedTimers.slice();
+  if (!finished.length) {
+    // posting after midnight: nothing finished yet today, so summarize yesterday
+    const yday = new Date(todayStart);
+    yday.setDate(yday.getDate() - 1);
+    const yFinished = logs.filter(e => e.startTime >= yday.getTime() && e.startTime < todayStart.getTime());
+    if (yFinished.length) {
+      day = yday;
+      finished = yFinished;
+      isYesterday = true;
+    }
   }
   return {day, finished, paused, isYesterday};
 }
