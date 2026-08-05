@@ -1,4 +1,4 @@
-const CACHE = 'meridian-v1';
+const CACHE = 'meridian-v2';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -15,8 +15,14 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // Navigations must revalidate with the server — an HTTP-cached index.html
+  // can otherwise pin an old app version long after a deploy. Offline still
+  // works: the failed fetch falls through to the SW cache below.
+  const req = e.request.mode === 'navigate'
+    ? new Request(e.request.url, { cache: 'no-cache' })
+    : e.request;
   e.respondWith(
-    fetch(e.request)
+    fetch(req)
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});

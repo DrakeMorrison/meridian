@@ -1147,10 +1147,16 @@ let reportLogs = [];
 // in-memory state (retried on resume) instead of killing whatever handler
 // touched storage first.
 const pendingWrites = new Map();
+// Keys whose reads threw — the value we're holding for them is a fallback,
+// not the truth, so re-read them once storage comes back.
+const failedReads = new Set();
 
 function storageGet(key) {
-  try { return localStorage.getItem(key); }
-  catch (e) { return pendingWrites.has(key) ? pendingWrites.get(key) : null; }
+  try { const v = localStorage.getItem(key); failedReads.delete(key); return v; }
+  catch (e) {
+    failedReads.add(key);
+    return pendingWrites.has(key) ? pendingWrites.get(key) : null;
+  }
 }
 
 function storageSet(key, val) {
@@ -1265,9 +1271,22 @@ function predictedLogs() {
 }
 
 // ── Service worker (PWA install + offline) ─────────────────────────
+// An installed PWA can stay resident for days without a real navigation, so
+// the browser never re-checks sw.js on its own — nudge it every time the app
+// comes back to the foreground, and when a new worker takes over, reload
+// (when safe) so the running page actually picks up the new code.
 if ('serviceWorker' in navigator) {
+  let swReg = null;
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').then(reg => { swReg = reg; }).catch(() => {});
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && swReg) swReg.update().catch(() => {});
+  });
+  let hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !REPORT_MODE && !document.hidden && canReloadSafely()) location.reload();
+    hadController = true;
   });
 }
 
@@ -2707,8 +2726,70 @@ applyThemeFromPref();
 // whole app column while the background canvas still shows), and canvases
 // can come back blank. Re-assert everything from in-memory state, and retry
 // any writes that failed while storage was detached.
+
+// If the page itself loaded while localStorage was detached (iOS restarting
+// the web content process on resume), every read threw and the app came up
+// empty: no logs, no paused timers, theme back to auto. Once storage is
+// reachable again, pull the stored data back in and union it with anything
+// logged since. This must run BEFORE flushPendingWrites — otherwise a save
+// made against the empty in-memory log would overwrite the real history.
+function recoverFailedReads() {
+  if (failedReads.size === 0) return;
+  try { localStorage.getItem(DB_KEY); } catch (e) { return; } // still detached, retry next resume
+  const toRecover = new Set(failedReads);
+  failedReads.clear();
+  if (toRecover.has(DB_KEY)) {
+    const stored = sanitizeLogs(loadJSON(DB_KEY, []));
+    const have = new Set(logs.map(e => e.id));
+    const missing = stored.filter(e => !have.has(e.id));
+    if (missing.length) {
+      logs = missing.concat(logs);
+      saveLogs();
+      if (!REPORT_MODE && logs.length > 1) {
+        drawBgGraph();
+        canvas.style.opacity = '0.6';
+      }
+    }
+  }
+  if (toRecover.has(PAUSED_KEY)) {
+    const stored = sanitizePaused(loadJSON(PAUSED_KEY, []));
+    const have = new Set(pausedTimers.map(t => t.id));
+    const missing = stored.filter(t => !have.has(t.id));
+    if (missing.length) {
+      pausedTimers = missing.concat(pausedTimers);
+      savePaused();
+    }
+  }
+  if (toRecover.has(ACTIVE_KEY) && !activeTimer && !timerInterval) restoreActiveTimer();
+  if (toRecover.has(THEME_KEY) && !pendingWrites.has(THEME_KEY)) {
+    themePref = storageGet(THEME_KEY) || 'auto';
+  }
+}
+
+// After a long suspend the compositor can be wedged in ways no in-page nudge
+// reliably fixes — the manual cure has been "kill the app and reopen it".
+// Automate that: all state lives in localStorage and is restored on load
+// (including the active timer), so when it's safe, a reload is lossless and
+// guarantees a fresh paint plus the latest deployed code.
+const LONG_SUSPEND_MS = 30 * 60 * 1000;
+let lastHiddenAt = null;
+
+function canReloadSafely() {
+  if (editingIndex !== -1) return false;
+  if (pendingWrites.size > 0 || failedReads.size > 0) return false; // storage not settled — reload would drop state
+  const taskEl = document.getElementById('task-input');
+  const estEl = document.getElementById('estimate-input');
+  if ((taskEl && taskEl.value) || (estEl && estEl.value)) return false; // unsaved draft
+  try { localStorage.getItem(DB_KEY); } catch (e) { return false; }
+  return true;
+}
+
 function resyncAfterResume() {
+  recoverFailedReads();
   flushPendingWrites();
+  const longSuspend = lastHiddenAt != null && Date.now() - lastHiddenAt > LONG_SUSPEND_MS;
+  lastHiddenAt = null;
+  if (longSuspend && !REPORT_MODE && canReloadSafely()) { location.reload(); return; }
   applyThemeFromPref(); // also redraws the graphs
   if (!REPORT_MODE && editingIndex === -1) renderLog();
   const layers = document.querySelectorAll('.app, .timer-display, .result-panel, .report-bar');
@@ -2720,6 +2801,11 @@ function resyncAfterResume() {
 
 window.addEventListener('pageshow', (e) => { if (e.persisted) resyncAfterResume(); });
 document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { lastHiddenAt = Date.now(); flushPendingWrites(); }
+  else resyncAfterResume();
+});
+// iOS standalone apps sometimes resume without firing visibilitychange.
+window.addEventListener('focus', () => {
   if (!document.hidden) resyncAfterResume();
 });
 </script>
