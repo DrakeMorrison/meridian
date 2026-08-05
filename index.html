@@ -730,6 +730,9 @@
     padding: 0.5rem 0 0;
   }
 
+  input.slack-webhook-input {
+    font-size: 0.8125rem;
+  }
   .file-handle-status {
     font-family: var(--mono);
     font-size: 0.75rem;
@@ -1109,6 +1112,22 @@
     </div>
 
     <div>
+      <div class="settings-section-title">Slack</div>
+      <div class="auto-export-row no-divider">
+        <div class="toggle-label">Post completed tasks</div>
+        <div class="toggle" id="slack-toggle" onclick="toggleSlack()"></div>
+      </div>
+      <div id="slack-settings" style="display:none">
+        <input type="text" id="slack-webhook-input" class="slack-webhook-input" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false" oninput="setSlackWebhook(this.value)">
+        <div class="settings-row" style="margin-top:0.75rem;">
+          <button class="btn btn-tiny accent" onclick="sendSlackTest()">Send Test</button>
+        </div>
+        <div class="export-note">Every completed task is posted to the channel this webhook is bound to — pick the channel when creating the webhook (Slack → your app → Incoming Webhooks). The URL is stored only on this device.</div>
+        <div class="file-handle-status" id="slack-status"></div>
+      </div>
+    </div>
+
+    <div>
       <div class="settings-section-title">Backup</div>
       <div class="auto-export-row no-divider">
         <div class="toggle-label">Auto-backup</div>
@@ -1368,7 +1387,7 @@ function logPastTask() {
 
   const now = Date.now();
   const actualMs = tookMin * 60 * 1000;
-  logs.unshift({
+  const entry = {
     id: now,
     task,
     predictedMs: null,
@@ -1376,8 +1395,10 @@ function logPastTask() {
     startTime: now - actualMs,
     endTime: now,
     pctDiff: null,
-  });
+  };
+  logs.unshift(entry);
   saveLogs();
+  postTaskToSlack(entry);
 
   taskEl.value = '';
   estEl.value = '';
@@ -1474,6 +1495,7 @@ function stopTimer() {
 
   logs.unshift(entry);
   saveLogs();
+  postTaskToSlack(entry);
 
   showResult(entry);
   renderLog();
@@ -2520,6 +2542,117 @@ if (!REPORT_MODE) {
   checkBackupDue();
 }
 
+// ── Slack notifications ──────────────────────────────────────────
+// Posted through a Slack incoming webhook — the webhook itself is bound to
+// one channel, so no token or channel picker is needed and nothing but the
+// completed task ever leaves the device. Webhooks don't send CORS headers,
+// so requests go out no-cors and the response is opaque: delivery can't be
+// confirmed, only network failure detected. Failed sends queue in storage
+// and retry on resume/reconnect, since mobile suspend can cut a send short.
+const SLACK_KEY = 'meridian_slack_cfg';
+const SLACK_QUEUE_KEY = 'meridian_slack_queue';
+let slackCfg = loadJSON(SLACK_KEY, null) || { enabled: false, webhookUrl: '' };
+if (typeof slackCfg.webhookUrl !== 'string') slackCfg.webhookUrl = '';
+let slackQueue = loadJSON(SLACK_QUEUE_KEY, []);
+if (!Array.isArray(slackQueue)) slackQueue = [];
+
+function saveSlackCfg() { storageSet(SLACK_KEY, JSON.stringify(slackCfg)); }
+function saveSlackQueue() { storageSet(SLACK_QUEUE_KEY, JSON.stringify(slackQueue)); }
+
+function slackWebhookValid() {
+  return slackCfg.webhookUrl.startsWith('https://hooks.slack.com/');
+}
+
+let flushingSlack = false;
+async function flushSlackQueue() {
+  if (flushingSlack || !slackQueue.length || !slackWebhookValid()) return;
+  flushingSlack = true;
+  try {
+    while (slackQueue.length) {
+      await fetch(slackCfg.webhookUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify({ text: slackQueue[0].text }),
+      });
+      slackQueue.shift();
+      saveSlackQueue();
+    }
+  } catch (e) {
+    // network failure — leave the rest queued for the next resume/reconnect
+  } finally {
+    flushingSlack = false;
+  }
+}
+
+function postTaskToSlack(entry) {
+  if (!slackCfg.enabled || !slackWebhookValid()) return;
+  let text;
+  if (entry.pctDiff == null) {
+    text = `✅ ${entry.task} — ~${formatDurationHuman(entry.actualMs)} (unplanned)`;
+  } else {
+    const sign = entry.pctDiff > 0 ? '+' : '';
+    text = `✅ ${entry.task} — ${formatDurationHuman(entry.actualMs)} (est. ${formatDurationHuman(entry.predictedMs)}, ${sign}${entry.pctDiff.toFixed(0)}%)`;
+  }
+  slackQueue.push({ text, ts: entry.endTime });
+  if (slackQueue.length > 20) slackQueue = slackQueue.slice(-20);
+  saveSlackQueue();
+  flushSlackQueue();
+}
+
+let slackStatusTimeout = null;
+function setSlackStatus(msg, transient) {
+  const el = document.getElementById('slack-status');
+  el.textContent = msg;
+  if (slackStatusTimeout) { clearTimeout(slackStatusTimeout); slackStatusTimeout = null; }
+  if (msg && transient) slackStatusTimeout = setTimeout(() => { el.textContent = ''; }, 4000);
+}
+
+function toggleSlack() {
+  slackCfg.enabled = !slackCfg.enabled;
+  saveSlackCfg();
+  renderSlackUI();
+}
+
+function setSlackWebhook(url) {
+  slackCfg.webhookUrl = url.trim();
+  saveSlackCfg();
+  if (slackCfg.webhookUrl && !slackWebhookValid()) {
+    setSlackStatus('Expected a URL starting with https://hooks.slack.com/');
+  } else {
+    setSlackStatus('');
+  }
+}
+
+async function sendSlackTest() {
+  if (!slackWebhookValid()) {
+    setSlackStatus('Paste a webhook URL first (https://hooks.slack.com/…)', true);
+    return;
+  }
+  try {
+    await fetch(slackCfg.webhookUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify({ text: '👋 Meridian test — completed tasks will be posted here.' }),
+    });
+    setSlackStatus('Sent — check the channel', true);
+  } catch (e) {
+    setSlackStatus('Send failed — offline?', true);
+  }
+}
+
+function renderSlackUI() {
+  const toggle = document.getElementById('slack-toggle');
+  toggle.classList.toggle('on', slackCfg.enabled);
+  document.getElementById('slack-settings').style.display = slackCfg.enabled ? 'block' : 'none';
+  document.getElementById('slack-webhook-input').value = slackCfg.webhookUrl;
+}
+
+if (!REPORT_MODE) {
+  renderSlackUI();
+  window.addEventListener('online', flushSlackQueue);
+  flushSlackQueue();
+}
+
 // ── Settings panel ───────────────────────────────────────────────
 function openSettings() {
   populateReportYears();
@@ -2764,6 +2897,19 @@ function recoverFailedReads() {
   if (toRecover.has(THEME_KEY) && !pendingWrites.has(THEME_KEY)) {
     themePref = storageGet(THEME_KEY) || 'auto';
   }
+  if (toRecover.has(SLACK_KEY) && !pendingWrites.has(SLACK_KEY)) {
+    slackCfg = loadJSON(SLACK_KEY, null) || slackCfg;
+    if (typeof slackCfg.webhookUrl !== 'string') slackCfg.webhookUrl = '';
+    if (!REPORT_MODE) renderSlackUI();
+  }
+  if (toRecover.has(SLACK_QUEUE_KEY)) {
+    const stored = loadJSON(SLACK_QUEUE_KEY, []);
+    if (Array.isArray(stored) && stored.length) {
+      const have = new Set(slackQueue.map(m => m.ts));
+      slackQueue = stored.filter(m => m && !have.has(m.ts)).concat(slackQueue);
+      saveSlackQueue();
+    }
+  }
 }
 
 // After a long suspend the compositor can be wedged in ways no in-page nudge
@@ -2787,6 +2933,7 @@ function canReloadSafely() {
 function resyncAfterResume() {
   recoverFailedReads();
   flushPendingWrites();
+  flushSlackQueue();
   const longSuspend = lastHiddenAt != null && Date.now() - lastHiddenAt > LONG_SUSPEND_MS;
   lastHiddenAt = null;
   if (longSuspend && !REPORT_MODE && canReloadSafely()) { location.reload(); return; }
