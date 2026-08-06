@@ -151,7 +151,7 @@
     margin-bottom: 1.5rem;
   }
 
-  input[type="text"], input[type="number"] {
+  input[type="text"], input[type="number"], input[type="time"] {
     width: 100%;
     background: transparent;
     border: none;
@@ -164,7 +164,7 @@
     transition: border-color 0.2s;
     caret-color: var(--accent);
   }
-  input[type="text"]:focus, input[type="number"]:focus {
+  input[type="text"]:focus, input[type="number"]:focus, input[type="time"]:focus {
     border-bottom-color: var(--accent2);
   }
   input[type="text"]::placeholder, input[type="number"]::placeholder {
@@ -733,6 +733,12 @@
   input.slack-webhook-input {
     font-size: 0.8125rem;
   }
+  input.slack-time-input {
+    width: auto;
+    font-size: 0.8125rem;
+    color-scheme: dark;
+  }
+  body.light input.slack-time-input { color-scheme: light; }
   .file-handle-status {
     font-family: var(--mono);
     font-size: 0.75rem;
@@ -1117,12 +1123,23 @@
         <div class="toggle-label">Post completed tasks</div>
         <div class="toggle" id="slack-toggle" onclick="toggleSlack()"></div>
       </div>
+      <div class="auto-export-row no-divider">
+        <div class="toggle-label">Auto-send daily summary</div>
+        <div class="toggle" id="slack-daily-toggle" onclick="toggleSlackDaily()"></div>
+      </div>
+      <div id="slack-daily-settings" style="display:none">
+        <div class="auto-export-row no-divider">
+          <div class="toggle-label">Send at</div>
+          <input type="time" id="slack-daily-time" class="slack-time-input" value="23:30" onchange="setSlackDailyTime(this.value)">
+        </div>
+        <div class="export-note" id="slack-daily-note"></div>
+      </div>
       <div id="slack-settings" style="display:none">
         <input type="text" id="slack-webhook-input" class="slack-webhook-input" placeholder="https://hooks.slack.com/services/…" autocomplete="off" spellcheck="false" oninput="setSlackWebhook(this.value)">
         <div class="settings-row" style="margin-top:0.75rem;">
           <button class="btn btn-tiny accent" onclick="sendSlackTest()">Send Test</button>
         </div>
-        <div class="export-note">Every completed task is posted to the channel this webhook is bound to — pick the channel when creating the webhook (Slack → your app → Incoming Webhooks). The URL is stored only on this device.</div>
+        <div class="export-note">Posts go to the channel this webhook is bound to — pick the channel when creating the webhook (Slack → your app → Incoming Webhooks). The URL is stored only on this device.</div>
         <div class="file-handle-status" id="slack-status"></div>
       </div>
     </div>
@@ -1816,23 +1833,27 @@ function summaryDay() {
   return {day, finished, paused, isYesterday};
 }
 
-function buildDailySummary() {
-  const {day, finished, paused} = summaryDay();
+// includeItems=false gives just the heading + totals line — used by the Slack
+// auto-send when tasks were already posted one-by-one during the day.
+function buildSummaryText(day, finished, paused, includeItems) {
   const todays = finished.concat(paused).sort((a, b) => a.startTime - b.startTime);
   if (!todays.length) return null;
 
   const dateStr = day.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
   const lines = [`*Daily Summary — ${dateStr}*`, ''];
-  todays.forEach(e => {
-    if (e.endTime === undefined) {
-      lines.push(`• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. ${formatDurationHuman(e.predictedMs)}, paused)`);
-    } else if (e.pctDiff == null) {
-      lines.push(`• ${e.task} — ~${formatDurationHuman(e.actualMs)} (unplanned, duration estimated)`);
-    } else {
-      const sign = e.pctDiff > 0 ? '+' : '';
-      lines.push(`• ${e.task} — ${formatDurationHuman(e.actualMs)} (est. ${formatDurationHuman(e.predictedMs)}, ${sign}${e.pctDiff.toFixed(0)}%)`);
-    }
-  });
+  if (includeItems) {
+    todays.forEach(e => {
+      if (e.endTime === undefined) {
+        lines.push(`• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. ${formatDurationHuman(e.predictedMs)}, paused)`);
+      } else if (e.pctDiff == null) {
+        lines.push(`• ${e.task} — ~${formatDurationHuman(e.actualMs)} (unplanned, duration estimated)`);
+      } else {
+        const sign = e.pctDiff > 0 ? '+' : '';
+        lines.push(`• ${e.task} — ${formatDurationHuman(e.actualMs)} (est. ${formatDurationHuman(e.predictedMs)}, ${sign}${e.pctDiff.toFixed(0)}%)`);
+      }
+    });
+    lines.push('');
+  }
 
   const totalMs = todays.reduce((s, e) => s + (e.endTime === undefined ? e.accumulatedMs : e.actualMs), 0);
   let footer = `${todays.length} ${todays.length === 1 ? 'task' : 'tasks'} · ${formatDurationHuman(totalMs)} total`;
@@ -1842,8 +1863,24 @@ function buildDailySummary() {
     const avgSign = avgDelta >= 0 ? '+' : '';
     footer += ` · avg delta ${avgSign}${avgDelta.toFixed(1)}%`;
   }
-  lines.push('', footer);
+  lines.push(footer);
   return lines.join('\n');
+}
+
+// The copy button's view: today, falling back to yesterday after midnight.
+function buildDailySummary(includeItems = true) {
+  const {day, finished, paused} = summaryDay();
+  return buildSummaryText(day, finished, paused, includeItems);
+}
+
+// A specific calendar day — used by the Slack auto-send, including catch-ups
+// of days that ended while the app was asleep.
+function buildDailySummaryForDay(dayStart, includeItems, includePaused) {
+  const from = dayStart.getTime();
+  const to = new Date(dayStart);
+  to.setDate(to.getDate() + 1);
+  const finished = logs.filter(e => e.startTime >= from && e.startTime < to.getTime());
+  return buildSummaryText(dayStart, finished, includePaused ? pausedTimers.slice() : [], includeItems);
 }
 
 function copyToClipboard(text) {
@@ -2551,8 +2588,27 @@ if (!REPORT_MODE) {
 // and retry on resume/reconnect, since mobile suspend can cut a send short.
 const SLACK_KEY = 'meridian_slack_cfg';
 const SLACK_QUEUE_KEY = 'meridian_slack_queue';
-let slackCfg = loadJSON(SLACK_KEY, null) || { enabled: false, webhookUrl: '' };
-if (typeof slackCfg.webhookUrl !== 'string') slackCfg.webhookUrl = '';
+
+// dailySummarizedDay is a watermark: the latest day key whose summary has been
+// enqueued (or ruled empty after the day ended). Everything the auto-send does
+// derives from it, so days the app slept through are caught up on the next
+// wake and nothing is ever summarized twice. dailySkipDay suppresses the
+// same-day send once (enabling or rescheduling past the send time must not
+// fire a surprise post) — that day still goes out via catch-up the next
+// morning.
+function normalizeSlackCfg(raw) {
+  const cfg = Object.assign(
+    { enabled: false, webhookUrl: '', dailyEnabled: false, dailyTime: '23:30', dailySummarizedDay: '', dailySkipDay: '' },
+    raw && typeof raw === 'object' ? raw : {}
+  );
+  if (typeof cfg.webhookUrl !== 'string') cfg.webhookUrl = '';
+  if (typeof cfg.dailyTime !== 'string' || !/^\d{1,2}:\d{2}$/.test(cfg.dailyTime)) cfg.dailyTime = '23:30';
+  if (typeof cfg.dailySummarizedDay !== 'string') cfg.dailySummarizedDay = '';
+  if (typeof cfg.dailySkipDay !== 'string') cfg.dailySkipDay = '';
+  return cfg;
+}
+
+let slackCfg = normalizeSlackCfg(loadJSON(SLACK_KEY, null));
 let slackQueue = loadJSON(SLACK_QUEUE_KEY, []);
 if (!Array.isArray(slackQueue)) slackQueue = [];
 
@@ -2569,11 +2625,19 @@ async function flushSlackQueue() {
   flushingSlack = true;
   try {
     while (slackQueue.length) {
+      const msg = slackQueue[0];
       await fetch(slackCfg.webhookUrl, {
         method: 'POST',
         mode: 'no-cors',
-        body: JSON.stringify({ text: slackQueue[0].text }),
+        body: JSON.stringify({ text: msg.text }),
       });
+      // Advance the daily watermark BEFORE dequeuing: if we die between the
+      // two writes, a stale watermark next to an empty queue would rebuild
+      // and resend the same day's summary on reload.
+      if (msg.dailyFor && msg.dailyFor > slackCfg.dailySummarizedDay) {
+        slackCfg.dailySummarizedDay = msg.dailyFor;
+        saveSlackCfg();
+      }
       slackQueue.shift();
       saveSlackQueue();
     }
@@ -2613,6 +2677,131 @@ function toggleSlack() {
   renderSlackUI();
 }
 
+function localDayKey(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function dayKeyToDate(key) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+}
+
+function yesterdayKey(now) {
+  const y = new Date(now);
+  y.setHours(0, 0, 0, 0);
+  y.setDate(y.getDate() - 1);
+  return localDayKey(y);
+}
+
+function dailySendTimeToday(now) {
+  const [h, m] = slackCfg.dailyTime.split(':').map(Number);
+  const t = new Date(now);
+  t.setHours(h, m, 0, 0);
+  return t;
+}
+
+function toggleSlackDaily() {
+  slackCfg.dailyEnabled = !slackCfg.dailyEnabled;
+  if (slackCfg.dailyEnabled) {
+    const now = new Date();
+    // Start the watermark at yesterday so enabling never backfills old
+    // history — but never move it backwards, or re-toggling after today's
+    // send would repeat it.
+    const baseline = yesterdayKey(now);
+    if (slackCfg.dailySummarizedDay < baseline) slackCfg.dailySummarizedDay = baseline;
+    // Enabling after today's send time must not fire a surprise post now;
+    // today still goes out via catch-up tomorrow morning.
+    if (now >= dailySendTimeToday(now) && slackCfg.dailySummarizedDay < localDayKey(now)) {
+      slackCfg.dailySkipDay = localDayKey(now);
+    }
+  }
+  saveSlackCfg();
+  renderSlackUI();
+}
+
+function setSlackDailyTime(v) {
+  if (!/^\d{1,2}:\d{2}$/.test(v)) return;
+  slackCfg.dailyTime = v;
+  // Moving the time into the past shouldn't post immediately either — the
+  // day is deferred to tomorrow's catch-up instead of being skipped.
+  const now = new Date();
+  if (now >= dailySendTimeToday(now) && slackCfg.dailySummarizedDay < localDayKey(now)) {
+    slackCfg.dailySkipDay = localDayKey(now);
+  }
+  saveSlackCfg();
+}
+
+// A daily send must never start unless its bookkeeping can be durably
+// recorded: posting while localStorage is detached (mobile suspend) means a
+// later reload forgets the send ever happened and repeats it. Deferring is
+// always safe — the minute tick / resume hook retries.
+function slackStorageSettled() {
+  try {
+    localStorage.setItem('meridian_probe', '1');
+    localStorage.removeItem('meridian_probe');
+  } catch (e) { return false; }
+  return !pendingWrites.has(SLACK_KEY) && !pendingWrites.has(SLACK_QUEUE_KEY) &&
+         !failedReads.has(SLACK_KEY) && !failedReads.has(SLACK_QUEUE_KEY);
+}
+
+// The outbox entry carries the day it summarizes, so a crash between the
+// queue write and the config write can't double-enqueue on reload — the
+// rebuilt message finds its twin by day key instead of being pushed again.
+function enqueueDailySummary(text, dayKey) {
+  if (slackQueue.some(m => m.dailyFor === dayKey)) return;
+  slackQueue.push({ text, ts: Date.now(), dailyFor: dayKey });
+  if (slackQueue.length > 20) slackQueue = slackQueue.slice(-20);
+  saveSlackQueue();
+}
+
+// Runs once a minute and on resume. A serverless PWA can only send while
+// awake, so: today's summary goes out the first time the app is running at
+// or past the scheduled time, and any day that ended while the app was
+// asleep is caught up (from the watermark forward) on the next wake. Paused
+// timers are live open work — they belong in today's summary only, not in a
+// past day's catch-up.
+function checkDailySummary() {
+  if (REPORT_MODE || !slackCfg.dailyEnabled || !slackWebhookValid()) return;
+  if (!slackStorageSettled()) return;
+  const now = new Date();
+  const todayKey = localDayKey(now);
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  if (!slackCfg.dailySummarizedDay) slackCfg.dailySummarizedDay = yesterdayKey(now);
+
+  let changed = false;
+  // Catch up finished days the app slept through (bounded, in case the
+  // stored watermark is ancient).
+  let day = dayKeyToDate(slackCfg.dailySummarizedDay);
+  const floor = new Date(todayStart);
+  floor.setDate(floor.getDate() - 7);
+  if (!day || day < floor) day = new Date(floor);
+  else day.setDate(day.getDate() + 1);
+  for (; day < todayStart; day.setDate(day.getDate() + 1)) {
+    const key = localDayKey(day);
+    const text = buildDailySummaryForDay(day, !slackCfg.enabled, false);
+    if (text) enqueueDailySummary(text, key);
+    // Empty days are sealed too — the day is over, nothing can appear in it.
+    slackCfg.dailySummarizedDay = key;
+    changed = true;
+  }
+
+  // Today, at/after the scheduled time. If today is still empty the watermark
+  // stays put, so tasks finished later tonight still get sent tonight.
+  if (now >= dailySendTimeToday(now) && slackCfg.dailySummarizedDay < todayKey &&
+      slackCfg.dailySkipDay !== todayKey) {
+    const text = buildDailySummaryForDay(todayStart, !slackCfg.enabled, true);
+    if (text) {
+      enqueueDailySummary(text, todayKey);
+      slackCfg.dailySummarizedDay = todayKey;
+      changed = true;
+    }
+  }
+
+  if (changed) saveSlackCfg();
+  flushSlackQueue();
+}
+
 function setSlackWebhook(url) {
   slackCfg.webhookUrl = url.trim();
   saveSlackCfg();
@@ -2641,16 +2830,24 @@ async function sendSlackTest() {
 }
 
 function renderSlackUI() {
-  const toggle = document.getElementById('slack-toggle');
-  toggle.classList.toggle('on', slackCfg.enabled);
-  document.getElementById('slack-settings').style.display = slackCfg.enabled ? 'block' : 'none';
+  document.getElementById('slack-toggle').classList.toggle('on', slackCfg.enabled);
+  document.getElementById('slack-daily-toggle').classList.toggle('on', slackCfg.dailyEnabled);
+  document.getElementById('slack-daily-settings').style.display = slackCfg.dailyEnabled ? 'block' : 'none';
+  document.getElementById('slack-settings').style.display = slackCfg.enabled || slackCfg.dailyEnabled ? 'block' : 'none';
   document.getElementById('slack-webhook-input').value = slackCfg.webhookUrl;
+  document.getElementById('slack-daily-time').value = slackCfg.dailyTime;
+  document.getElementById('slack-daily-note').textContent = (slackCfg.enabled
+    ? 'Tasks are already posted one-by-one, so the daily post carries only the day’s totals.'
+    : 'The daily post includes the full task list and totals — same text as the Daily Summary button.')
+    + ' It goes out the first time the app is awake at or after this time; a day the app sleeps through is sent when the app next opens.';
 }
 
 if (!REPORT_MODE) {
   renderSlackUI();
   window.addEventListener('online', flushSlackQueue);
   flushSlackQueue();
+  checkDailySummary();
+  setInterval(checkDailySummary, 60 * 1000);
 }
 
 // ── Settings panel ───────────────────────────────────────────────
@@ -2898,8 +3095,8 @@ function recoverFailedReads() {
     themePref = storageGet(THEME_KEY) || 'auto';
   }
   if (toRecover.has(SLACK_KEY) && !pendingWrites.has(SLACK_KEY)) {
-    slackCfg = loadJSON(SLACK_KEY, null) || slackCfg;
-    if (typeof slackCfg.webhookUrl !== 'string') slackCfg.webhookUrl = '';
+    const stored = loadJSON(SLACK_KEY, null);
+    if (stored) slackCfg = normalizeSlackCfg(stored);
     if (!REPORT_MODE) renderSlackUI();
   }
   if (toRecover.has(SLACK_QUEUE_KEY)) {
@@ -2934,6 +3131,7 @@ function resyncAfterResume() {
   recoverFailedReads();
   flushPendingWrites();
   flushSlackQueue();
+  checkDailySummary();
   const longSuspend = lastHiddenAt != null && Date.now() - lastHiddenAt > LONG_SUSPEND_MS;
   lastHiddenAt = null;
   if (longSuspend && !REPORT_MODE && canReloadSafely()) { location.reload(); return; }
