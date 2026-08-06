@@ -2652,10 +2652,10 @@ function postTaskToSlack(entry) {
   if (!slackCfg.enabled || !slackWebhookValid()) return;
   let text;
   if (entry.pctDiff == null) {
-    text = `✅ ${entry.task} — ~${formatDurationHuman(entry.actualMs)} (unplanned)`;
+    text = `${entry.task} — ~${formatDurationHuman(entry.actualMs)} (unplanned)`;
   } else {
     const sign = entry.pctDiff > 0 ? '+' : '';
-    text = `✅ ${entry.task} — ${formatDurationHuman(entry.actualMs)} (est. ${formatDurationHuman(entry.predictedMs)}, ${sign}${entry.pctDiff.toFixed(0)}%)`;
+    text = `${entry.task} — ${formatDurationHuman(entry.actualMs)} (est. ${formatDurationHuman(entry.predictedMs)}, ${sign}${entry.pctDiff.toFixed(0)}%)`;
   }
   slackQueue.push({ text, ts: entry.endTime });
   if (slackQueue.length > 20) slackQueue = slackQueue.slice(-20);
