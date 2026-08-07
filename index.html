@@ -359,10 +359,20 @@
     white-space: nowrap;
   }
   .paused-meta .paused-over { color: var(--danger); }
+  .paused-meta .voided-est { text-decoration: line-through; }
   .paused-actions {
     display: flex;
     gap: 0.4rem;
     flex-shrink: 0;
+  }
+  .paused-entry-editing { grid-template-columns: 1fr; }
+  .paused-rename-input { font-size: 0.95rem; margin-bottom: 0.4rem; }
+  .paused-rename-note {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
   }
 
   .result-panel {
@@ -415,6 +425,14 @@
   .result-delta.under { color: var(--accent); }
   .result-delta.over { color: var(--danger); }
   .result-delta.exact { color: var(--accent2); }
+  .result-delta.voided {
+    color: var(--muted);
+    font-size: 1.5rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding-top: 0.75rem;
+  }
+  .rc-val.voided { text-decoration: line-through; color: var(--muted); }
 
   .result-subline {
     font-size: 0.8125rem;
@@ -608,7 +626,7 @@
   .log-delta.under { color: var(--accent); }
   .log-delta.over { color: var(--danger); }
   .log-delta.exact { color: var(--accent2); }
-  .log-delta.unplanned {
+  .log-delta.unplanned, .log-delta.voided {
     color: var(--muted);
     font-family: var(--mono);
     font-size: 0.625rem;
@@ -1245,12 +1263,16 @@ function sanitizeLogs(raw) {
       startTime: finiteOrNull(e.startTime),
       endTime: finiteOrNull(e.endTime),
       pctDiff: finiteOrNull(e.pctDiff),
+      voided: e.voided === true,
     };
     if (entry.actualMs == null && entry.startTime != null && entry.endTime != null) entry.actualMs = entry.endTime - entry.startTime;
     if (entry.startTime == null && entry.endTime != null && entry.actualMs != null) entry.startTime = entry.endTime - entry.actualMs;
     if (entry.endTime == null && entry.startTime != null && entry.actualMs != null) entry.endTime = entry.startTime + entry.actualMs;
     if (entry.actualMs == null && entry.startTime == null && entry.endTime == null) continue;
-    if (!(entry.predictedMs > 0)) { entry.predictedMs = null; entry.pctDiff = null; }
+    if (!(entry.predictedMs > 0)) { entry.predictedMs = null; entry.pctDiff = null; entry.voided = false; }
+    // Voided: the estimate was invalidated (task renamed mid-timer) — keep it
+    // visible on the record but never score it.
+    else if (entry.voided) entry.pctDiff = null;
     else if (entry.pctDiff == null && entry.actualMs != null) entry.pctDiff = ((entry.actualMs - entry.predictedMs) / entry.predictedMs) * 100;
     entry.id = finiteOrNull(e.id) != null ? e.id : (entry.startTime != null ? entry.startTime : clean.length);
     clean.push(entry);
@@ -1268,6 +1290,7 @@ function sanitizePaused(raw) {
       predictedMs: t.predictedMs,
       startTime: finiteOrNull(t.startTime) || 0,
       accumulatedMs: finiteOrNull(t.accumulatedMs) || 0,
+      voided: t.voided === true,
     }));
 }
 
@@ -1275,8 +1298,11 @@ let logs = sanitizeLogs(loadJSON(DB_KEY, []));
 let pausedTimers = sanitizePaused(loadJSON(PAUSED_KEY, []));
 let timerInterval = null;
 let editingIndex = -1;
+let editingPausedId = null;
 // Active timer: null when idle. Shape:
-// { id, task, predictedMs, startTime, accumulatedMs, lastResumeAt }
+// { id, task, predictedMs, startTime, accumulatedMs, lastResumeAt, voided }
+// voided: the task was renamed while paused, so the estimate no longer
+// describes what the timer measured — it logs as unplanned.
 let activeTimer = null;
 
 const canvas = document.getElementById('bg-canvas');
@@ -1378,6 +1404,7 @@ function startTimer() {
     startTime: now,
     accumulatedMs: 0,
     lastResumeAt: now,
+    voided: false,
   };
   saveActive();
 
@@ -1444,7 +1471,9 @@ function beginActiveTimerUI() {
   document.getElementById('result-panel').classList.remove('visible');
 
   document.getElementById('running-task-label').textContent = activeTimer.task.toUpperCase();
-  document.getElementById('timer-meta').textContent = `est. ${(+estMin.toFixed(2))} min`;
+  document.getElementById('timer-meta').textContent = activeTimer.voided
+    ? `est. ${(+estMin.toFixed(2))} min — voided`
+    : `est. ${(+estMin.toFixed(2))} min`;
   document.getElementById('timer-display').classList.add('visible');
 
   startBackgroundGraph();
@@ -1460,7 +1489,11 @@ function updateTimerDisplay() {
   const isOver = remaining < 0;
 
   const digits = document.getElementById('time-digits');
-  if (isOver) {
+  if (activeTimer.voided) {
+    // No live prediction to count down against — just show elapsed.
+    digits.textContent = formatDuration(elapsed);
+    digits.classList.remove('over');
+  } else if (isOver) {
     digits.textContent = '-' + formatDuration(Math.abs(remaining));
     digits.classList.add('over');
   } else {
@@ -1471,7 +1504,7 @@ function updateTimerDisplay() {
   const fill = document.getElementById('elapsed-fill');
   const pct = Math.min((elapsed / activeTimer.predictedMs) * 100, 100);
   fill.style.width = pct + '%';
-  if (isOver) fill.classList.add('over'); else fill.classList.remove('over');
+  if (isOver && !activeTimer.voided) fill.classList.add('over'); else fill.classList.remove('over');
 
   const marker = document.getElementById('predicted-marker');
   marker.style.left = '100%';
@@ -1491,7 +1524,7 @@ function hideActiveTimerUI() {
 
 function logEntryFromTimer(t, actualMs) {
   const endTime = Date.now();
-  const pct = ((actualMs - t.predictedMs) / t.predictedMs) * 100;
+  const pct = t.voided ? null : ((actualMs - t.predictedMs) / t.predictedMs) * 100;
   return {
     id: t.id,
     task: t.task,
@@ -1500,6 +1533,7 @@ function logEntryFromTimer(t, actualMs) {
     startTime: t.startTime,
     endTime,
     pctDiff: pct,
+    voided: t.voided === true,
   };
 }
 
@@ -1530,6 +1564,7 @@ function pauseActiveTimer() {
     predictedMs: activeTimer.predictedMs,
     startTime: activeTimer.startTime,
     accumulatedMs: activeTimer.accumulatedMs,
+    voided: activeTimer.voided === true,
   });
   activeTimer = null;
   clearActiveIntervals();
@@ -1546,6 +1581,7 @@ function resumePausedTimer(id) {
   if (activeTimer) pauseActiveTimer();
   const idx = pausedTimers.findIndex(t => t.id === id);
   if (idx === -1) return;
+  if (editingPausedId === id) editingPausedId = null;
   const t = pausedTimers.splice(idx, 1)[0];
   savePaused();
   activeTimer = {
@@ -1555,6 +1591,7 @@ function resumePausedTimer(id) {
     startTime: t.startTime,
     accumulatedMs: t.accumulatedMs,
     lastResumeAt: Date.now(),
+    voided: t.voided === true,
   };
   saveActive();
   beginActiveTimerUI();
@@ -1564,11 +1601,13 @@ function resumePausedTimer(id) {
 function stopPausedTimer(id) {
   const idx = pausedTimers.findIndex(t => t.id === id);
   if (idx === -1) return;
+  if (editingPausedId === id) editingPausedId = null;
   const t = pausedTimers.splice(idx, 1)[0];
   savePaused();
   const entry = logEntryFromTimer(t, t.accumulatedMs);
   logs.unshift(entry);
   saveLogs();
+  postTaskToSlack(entry);
   showResult(entry);
   renderLog();
   drawBgGraph();
@@ -1582,25 +1621,34 @@ function showResult(entry) {
 
   document.getElementById('result-task-label').textContent = entry.task.toUpperCase();
 
-  const sign = pct > 0 ? '+' : '';
-  delta.textContent = sign + pct.toFixed(1) + '%';
-  delta.className = 'result-delta ' + (Math.abs(pct) < 2 ? 'exact' : pct > 0 ? 'over' : 'under');
-
-  if (Math.abs(pct) < 2) {
-    sub.textContent = 'nearly perfect estimate';
-  } else if (pct > 0) {
-    sub.textContent = `ran ${Math.abs(pct).toFixed(1)}% over — took longer than expected`;
+  if (pct == null) {
+    delta.textContent = 'est. voided';
+    delta.className = 'result-delta voided';
+    sub.textContent = 'renamed mid-timer — logged as unplanned, excluded from calibration';
   } else {
-    sub.textContent = `finished ${Math.abs(pct).toFixed(1)}% faster than expected`;
+    const sign = pct > 0 ? '+' : '';
+    delta.textContent = sign + pct.toFixed(1) + '%';
+    delta.className = 'result-delta ' + (Math.abs(pct) < 2 ? 'exact' : pct > 0 ? 'over' : 'under');
+
+    if (Math.abs(pct) < 2) {
+      sub.textContent = 'nearly perfect estimate';
+    } else if (pct > 0) {
+      sub.textContent = `ran ${Math.abs(pct).toFixed(1)}% over — took longer than expected`;
+    } else {
+      sub.textContent = `finished ${Math.abs(pct).toFixed(1)}% faster than expected`;
+    }
   }
 
-  document.getElementById('res-predicted').textContent = formatDuration(entry.predictedMs);
+  const predEl = document.getElementById('res-predicted');
+  predEl.textContent = entry.predictedMs != null ? formatDuration(entry.predictedMs) : '—';
+  predEl.classList.toggle('voided', pct == null);
   document.getElementById('res-actual').textContent = formatDuration(entry.actualMs);
   document.getElementById('res-start').textContent = formatTime(entry.startTime);
   document.getElementById('res-end').textContent = formatTime(entry.endTime);
 
   panel.classList.add('visible');
-  drawResultGraph(entry);
+  if (pct == null) document.getElementById('result-graph-wrap').classList.remove('visible');
+  else drawResultGraph(entry);
 }
 
 function clearResult() {
@@ -1626,22 +1674,77 @@ function renderPaused() {
   }
   section.classList.remove('empty');
   list.innerHTML = pausedTimers.map(t => {
+    if (t.id === editingPausedId) {
+      return `<div class="paused-entry paused-entry-editing">
+        <div>
+          <div class="log-edit-label">Rename task</div>
+          <input type="text" id="paused-rename-input" class="edit-input-task paused-rename-input" value="${escHtml(t.task)}" onkeydown="pausedRenameKeydown(event, ${t.id})">
+          ${t.voided ? '' : '<div class="paused-rename-note">renaming voids the estimate — this task will log as unplanned</div>'}
+          <div class="btn-group">
+            <button class="btn btn-tiny" onclick="cancelPausedRename()">Cancel</button>
+            <button class="btn btn-tiny ${t.voided ? 'accent' : 'danger'}" onclick="savePausedRename(${t.id})">${t.voided ? 'Rename' : 'Rename & void est.'}</button>
+          </div>
+        </div>
+      </div>`;
+    }
     const elapsed = t.accumulatedMs;
-    const over = elapsed > t.predictedMs;
+    const over = !t.voided && elapsed > t.predictedMs;
     const elapsedStr = formatDuration(elapsed);
     const predStr = formatDuration(t.predictedMs);
     const metaCls = over ? 'paused-over' : '';
+    const estPart = t.voided ? `<s class="voided-est">est. ${predStr}</s> voided` : `est. ${predStr}`;
     return `<div class="paused-entry">
       <div class="paused-info">
         <div class="paused-task">${escHtml(t.task)}</div>
-        <div class="paused-meta"><span class="${metaCls}">${elapsedStr}</span> / est. ${predStr} · paused</div>
+        <div class="paused-meta"><span class="${metaCls}">${elapsedStr}</span> / ${estPart} · paused</div>
       </div>
       <div class="paused-actions">
         <button class="btn btn-tiny accent" onclick="resumePausedTimer(${t.id})">Resume</button>
         <button class="btn btn-tiny" onclick="stopPausedTimer(${t.id})">Stop</button>
+        <button class="btn btn-tiny" onclick="startPausedRename(${t.id})" title="${t.voided ? 'Rename' : 'Rename — voids the estimate'}">✎</button>
       </div>
     </div>`;
   }).join('');
+}
+
+function startPausedRename(id) {
+  editingPausedId = id;
+  renderPaused();
+  const input = document.getElementById('paused-rename-input');
+  if (input) { input.focus(); input.select(); }
+}
+
+function cancelPausedRename() {
+  editingPausedId = null;
+  renderPaused();
+}
+
+function pausedRenameKeydown(e, id) {
+  if (e.key === 'Enter') savePausedRename(id);
+  else if (e.key === 'Escape') { e.stopPropagation(); cancelPausedRename(); }
+}
+
+// Renaming a paused timer voids its estimate: the prediction was made for a
+// different task than the one the clock ended up measuring, so scoring it
+// would pollute calibration. The original estimate stays on the record,
+// struck through, and the entry logs as unplanned.
+function savePausedRename(id) {
+  const t = pausedTimers.find(t => t.id === id);
+  const input = document.getElementById('paused-rename-input');
+  if (!t || !input) return;
+  const name = input.value.trim();
+  if (!name) {
+    input.style.borderBottomColor = 'var(--danger)';
+    setTimeout(() => { input.style.borderBottomColor = ''; }, 1500);
+    return;
+  }
+  if (name !== t.task) {
+    t.task = name;
+    t.voided = true;
+    savePaused();
+  }
+  editingPausedId = null;
+  renderPaused();
 }
 
 function renderLog() {
@@ -1697,10 +1800,10 @@ function renderLogEntry(e, i) {
           <div class="log-edit-fields">
             <div>
               <div class="log-edit-label">Est. (min)</div>
-              <input type="number" id="edit-pred" class="edit-input-num" ${e.pctDiff == null ? 'placeholder="—" disabled' : `value="${(e.predictedMs/60000).toFixed(2)}"`} min="0.01" step="0.01">
+              <input type="number" id="edit-pred" class="edit-input-num" ${e.pctDiff == null ? (e.voided ? `value="${(e.predictedMs/60000).toFixed(2)}" disabled` : 'placeholder="—" disabled') : `value="${(e.predictedMs/60000).toFixed(2)}"`} min="0.01" step="0.01">
             </div>
             <div>
-              <div class="log-edit-label">${e.pctDiff == null ? 'Took (min, estimated)' : 'Actual (min)'}</div>
+              <div class="log-edit-label">${e.pctDiff == null && !e.voided ? 'Took (min, estimated)' : 'Actual (min)'}</div>
               <input type="number" id="edit-actual" class="edit-input-num" value="${(e.actualMs/60000).toFixed(2)}" min="0.01" step="0.01">
             </div>
           </div>
@@ -1715,12 +1818,15 @@ function renderLogEntry(e, i) {
       </div>`;
     }
     if (e.pctDiff == null) {
+      const tookPart = e.voided
+        ? `<s>est. ${formatDuration(e.predictedMs)}</s> / actual ${formatDuration(e.actualMs)}`
+        : `took ~${formatDuration(e.actualMs)} (est.)`;
       return `<div class="log-entry" id="entry-${e.id}" onclick="editEntry(${i})">
         <div>
           <div class="log-task">${escHtml(e.task)}</div>
-          <div class="log-meta">${formatDateShort(e.startTime)} · ${formatTime(e.startTime)} – ${formatTime(e.endTime)} · took ~${formatDuration(e.actualMs)} (est.)</div>
+          <div class="log-meta">${formatDateShort(e.startTime)} · ${formatTime(e.startTime)} – ${formatTime(e.endTime)} · ${tookPart}</div>
         </div>
-        <div class="log-delta unplanned">unplanned</div>
+        <div class="log-delta ${e.voided ? 'voided' : 'unplanned'}">${e.voided ? 'voided' : 'unplanned'}</div>
       </div>`;
     }
     const pct = e.pctDiff;
@@ -1752,7 +1858,10 @@ function saveEdit(i) {
   if (logs[i].pctDiff == null) {
     logs[i].task = task;
     logs[i].actualMs = actualMin * 60000;
-    logs[i].startTime = logs[i].endTime - logs[i].actualMs;
+    // Voided entries were timer-measured: the start is real, so trimming the
+    // duration moves the end. Plain retrodictions keep their end and shift start.
+    if (logs[i].voided) logs[i].endTime = logs[i].startTime + logs[i].actualMs;
+    else logs[i].startTime = logs[i].endTime - logs[i].actualMs;
   } else {
     const predMin = parseFloat(document.getElementById('edit-pred').value);
     if (!(predMin > 0)) return;
@@ -1844,7 +1953,11 @@ function buildSummaryText(day, finished, paused, includeItems) {
   if (includeItems) {
     todays.forEach(e => {
       if (e.endTime === undefined) {
-        lines.push(`• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. ${formatDurationHuman(e.predictedMs)}, paused)`);
+        lines.push(e.voided
+          ? `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. voided, paused)`
+          : `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. ${formatDurationHuman(e.predictedMs)}, paused)`);
+      } else if (e.voided) {
+        lines.push(`• ${e.task} — ${formatDurationHuman(e.actualMs)} (voided est. ${formatDurationHuman(e.predictedMs)})`);
       } else if (e.pctDiff == null) {
         lines.push(`• ${e.task} — ~${formatDurationHuman(e.actualMs)} (unplanned, duration estimated)`);
       } else {
@@ -2393,6 +2506,7 @@ function restoreActiveTimer() {
     if (!t || !t.task || !(finiteOrNull(t.predictedMs) > 0)) return;
     activeTimer = t;
     activeTimer.task = String(activeTimer.task);
+    activeTimer.voided = activeTimer.voided === true;
     if (finiteOrNull(activeTimer.accumulatedMs) == null) activeTimer.accumulatedMs = 0;
     if (finiteOrNull(activeTimer.lastResumeAt) == null) activeTimer.lastResumeAt = Date.now();
     if (finiteOrNull(activeTimer.startTime) == null) activeTimer.startTime = Date.now() - activeTimer.accumulatedMs;
@@ -2651,7 +2765,9 @@ async function flushSlackQueue() {
 function postTaskToSlack(entry) {
   if (!slackCfg.enabled || !slackWebhookValid()) return;
   let text;
-  if (entry.pctDiff == null) {
+  if (entry.voided) {
+    text = `${entry.task} — ${formatDurationHuman(entry.actualMs)} (voided est. ${formatDurationHuman(entry.predictedMs)})`;
+  } else if (entry.pctDiff == null) {
     text = `${entry.task} — ~${formatDurationHuman(entry.actualMs)} (unplanned)`;
   } else {
     const sign = entry.pctDiff > 0 ? '+' : '';
