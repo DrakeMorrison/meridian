@@ -1613,6 +1613,15 @@ function stopPausedTimer(id) {
   drawBgGraph();
 }
 
+function deletePausedTimer(id) {
+  const idx = pausedTimers.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  if (editingPausedId === id) editingPausedId = null;
+  pausedTimers.splice(idx, 1);
+  savePaused();
+  renderPaused();
+}
+
 function showResult(entry) {
   const pct = entry.pctDiff;
   const panel = document.getElementById('result-panel');
@@ -1702,6 +1711,7 @@ function renderPaused() {
         <button class="btn btn-tiny accent" onclick="resumePausedTimer(${t.id})">Resume</button>
         <button class="btn btn-tiny" onclick="stopPausedTimer(${t.id})">Stop</button>
         <button class="btn btn-tiny" onclick="startPausedRename(${t.id})" title="${t.voided ? 'Rename' : 'Rename — voids the estimate'}">✎</button>
+        <button class="btn btn-tiny danger" onclick="deletePausedTimer(${t.id})" title="Delete — discards without logging">✕</button>
       </div>
     </div>`;
   }).join('');
