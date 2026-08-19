@@ -1955,18 +1955,14 @@ function summaryDay() {
 // includeItems=false gives just the heading + totals line — used by the Slack
 // auto-send when tasks were already posted one-by-one during the day.
 function buildSummaryText(day, finished, paused, includeItems) {
-  const todays = finished.concat(paused).sort((a, b) => a.startTime - b.startTime);
+  const todays = finished.concat(paused);
   if (!todays.length) return null;
 
   const dateStr = day.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
   const lines = [`*Daily Summary — ${dateStr}*`, ''];
   if (includeItems) {
-    todays.forEach(e => {
-      if (e.endTime === undefined) {
-        lines.push(e.voided
-          ? `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. voided, paused)`
-          : `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. ${formatDurationHuman(e.predictedMs)}, paused)`);
-      } else if (e.voided) {
+    finished.slice().sort((a, b) => a.startTime - b.startTime).forEach(e => {
+      if (e.voided) {
         lines.push(`• ${e.task} — ${formatDurationHuman(e.actualMs)} (voided est. ${formatDurationHuman(e.predictedMs)})`);
       } else if (e.pctDiff == null) {
         lines.push(`• ${e.task} — ~${formatDurationHuman(e.actualMs)} (unplanned, duration estimated)`);
@@ -1975,7 +1971,16 @@ function buildSummaryText(day, finished, paused, includeItems) {
         lines.push(`• ${e.task} — ${formatDurationHuman(e.actualMs)} (est. ${formatDurationHuman(e.predictedMs)}, ${sign}${e.pctDiff.toFixed(0)}%)`);
       }
     });
-    lines.push('');
+    if (finished.length) lines.push('');
+    if (paused.length) {
+      lines.push('*Not Finished*');
+      paused.slice().sort((a, b) => a.startTime - b.startTime).forEach(e => {
+        lines.push(e.voided
+          ? `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. voided)`
+          : `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. ${formatDurationHuman(e.predictedMs)})`);
+      });
+      lines.push('');
+    }
   }
 
   const totalMs = todays.reduce((s, e) => s + (e.endTime === undefined ? e.accumulatedMs : e.actualMs), 0);
