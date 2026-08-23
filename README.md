@@ -12,7 +12,7 @@ Meridian helps you measure how accurately you estimate tasks. Log sessions, trac
 
 ## Features
 
-- **Session tracking** — enter a task and an estimate, start the timer, stop when done
+- **Session tracking** — enter a task and an estimate, start the timer, stop when done. Estimate `0` skips the prediction entirely and just logs the time (excluded from calibration)
 - **Calibration scoring** — see your average delta and Brier score across all sessions
 - **Graph view** — click the background graph to go fullscreen; hover dots for session details, click a dot to jump to that entry
 - **Import / Export** — CSV export and import for portability

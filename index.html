@@ -973,7 +973,7 @@
     <div class="time-row">
       <div class="input-block">
         <div class="section-label">Estimate (min)</div>
-        <input type="number" id="estimate-input" placeholder="30" min="0.1" step="0.5" />
+        <input type="number" id="estimate-input" placeholder="30" min="0" step="0.5" title="0 = no estimate — just log the time" />
       </div>
       <button class="btn start-btn" id="start-btn" onclick="startTimer()">START ↵</button>
       <button class="btn log-past-btn" id="log-past-btn" onclick="logPastTask()" title="Log a task you already did — estimate field holds how long it took; no prediction is recorded">log past (<span class="key">r</span>)</button>
@@ -1264,6 +1264,7 @@ function sanitizeLogs(raw) {
       endTime: finiteOrNull(e.endTime),
       pctDiff: finiteOrNull(e.pctDiff),
       voided: e.voided === true,
+      tracked: e.tracked === true,
     };
     if (entry.actualMs == null && entry.startTime != null && entry.endTime != null) entry.actualMs = entry.endTime - entry.startTime;
     if (entry.startTime == null && entry.endTime != null && entry.actualMs != null) entry.startTime = entry.endTime - entry.actualMs;
@@ -1282,8 +1283,11 @@ function sanitizeLogs(raw) {
 
 function sanitizePaused(raw) {
   if (!Array.isArray(raw)) return [];
+  // predictedMs === null is a valid state (no-estimate timer); anything else
+  // non-finite is corruption and drops the entry.
   return raw
-    .filter(t => t && typeof t === 'object' && t.task != null && finiteOrNull(t.predictedMs) != null)
+    .filter(t => t && typeof t === 'object' && t.task != null &&
+      (t.predictedMs === null || finiteOrNull(t.predictedMs) != null))
     .map(t => ({
       id: finiteOrNull(t.id) != null ? t.id : (finiteOrNull(t.startTime) || 0),
       task: typeof t.task === 'string' ? t.task : String(t.task),
@@ -1378,15 +1382,19 @@ function formatDateShort(ts) {
 }
 
 
+// An estimate of exactly 0 means "no prediction — just log the time":
+// the timer runs and measures, but predictedMs is null and the entry lands
+// as unplanned, outside all calibration stats.
 function startTimer() {
   const taskEl = document.getElementById('task-input');
   const estEl = document.getElementById('estimate-input');
   const task = taskEl.value.trim();
   const estMin = parseFloat(estEl.value);
+  const estOk = !isNaN(estMin) && estMin >= 0;
 
-  if (!task || !estMin || estMin <= 0) {
+  if (!task || !estOk) {
     if (!task) taskEl.style.borderBottomColor = 'var(--danger)';
-    if (!estMin || estMin <= 0) estEl.style.borderBottomColor = 'var(--danger)';
+    if (!estOk) estEl.style.borderBottomColor = 'var(--danger)';
     setTimeout(() => {
       taskEl.style.borderBottomColor = '';
       estEl.style.borderBottomColor = '';
@@ -1400,7 +1408,7 @@ function startTimer() {
   activeTimer = {
     id: now,
     task,
-    predictedMs: estMin * 60 * 1000,
+    predictedMs: estMin === 0 ? null : estMin * 60 * 1000,
     startTime: now,
     accumulatedMs: 0,
     lastResumeAt: now,
@@ -1462,7 +1470,7 @@ function flashLogPastBtn() {
 }
 
 function beginActiveTimerUI() {
-  const estMin = activeTimer.predictedMs / 60000;
+  const noEst = activeTimer.predictedMs == null;
   document.getElementById('input-section').style.display = 'none';
   document.getElementById('task-input').disabled = true;
   document.getElementById('estimate-input').disabled = true;
@@ -1471,9 +1479,13 @@ function beginActiveTimerUI() {
   document.getElementById('result-panel').classList.remove('visible');
 
   document.getElementById('running-task-label').textContent = activeTimer.task.toUpperCase();
-  document.getElementById('timer-meta').textContent = activeTimer.voided
-    ? `est. ${(+estMin.toFixed(2))} min — voided`
-    : `est. ${(+estMin.toFixed(2))} min`;
+  const estMin = noEst ? 0 : activeTimer.predictedMs / 60000;
+  document.getElementById('timer-meta').textContent = noEst
+    ? 'no estimate — logging time'
+    : activeTimer.voided
+      ? `est. ${(+estMin.toFixed(2))} min — voided`
+      : `est. ${(+estMin.toFixed(2))} min`;
+  document.querySelector('.predicted-bar').style.display = noEst ? 'none' : '';
   document.getElementById('timer-display').classList.add('visible');
 
   startBackgroundGraph();
@@ -1485,10 +1497,18 @@ function beginActiveTimerUI() {
 function updateTimerDisplay() {
   if (!activeTimer) return;
   const elapsed = activeElapsed();
+
+  const digits = document.getElementById('time-digits');
+  if (activeTimer.predictedMs == null) {
+    // No estimate at all — count up; the prediction bar is hidden.
+    digits.textContent = formatDuration(elapsed);
+    digits.classList.remove('over');
+    return;
+  }
+
   const remaining = activeTimer.predictedMs - elapsed;
   const isOver = remaining < 0;
 
-  const digits = document.getElementById('time-digits');
   if (activeTimer.voided) {
     // No live prediction to count down against — just show elapsed.
     digits.textContent = formatDuration(elapsed);
@@ -1524,16 +1544,20 @@ function hideActiveTimerUI() {
 
 function logEntryFromTimer(t, actualMs) {
   const endTime = Date.now();
-  const pct = t.voided ? null : ((actualMs - t.predictedMs) / t.predictedMs) * 100;
+  const noEst = t.predictedMs == null;
+  const pct = (noEst || t.voided) ? null : ((actualMs - t.predictedMs) / t.predictedMs) * 100;
   return {
     id: t.id,
     task: t.task,
-    predictedMs: t.predictedMs,
+    predictedMs: noEst ? null : t.predictedMs,
     actualMs,
     startTime: t.startTime,
     endTime,
     pctDiff: pct,
     voided: t.voided === true,
+    // tracked: unplanned but timer-measured — the duration is exact, unlike a
+    // retrodiction's after-the-fact guess.
+    tracked: noEst,
   };
 }
 
@@ -1631,9 +1655,15 @@ function showResult(entry) {
   document.getElementById('result-task-label').textContent = entry.task.toUpperCase();
 
   if (pct == null) {
-    delta.textContent = 'est. voided';
-    delta.className = 'result-delta voided';
-    sub.textContent = 'renamed mid-timer — logged as unplanned, excluded from calibration';
+    if (entry.predictedMs == null) {
+      delta.textContent = 'time logged';
+      delta.className = 'result-delta voided';
+      sub.textContent = 'no estimate — logged as unplanned, excluded from calibration';
+    } else {
+      delta.textContent = 'est. voided';
+      delta.className = 'result-delta voided';
+      sub.textContent = 'renamed mid-timer — logged as unplanned, excluded from calibration';
+    }
   } else {
     const sign = pct > 0 ? '+' : '';
     delta.textContent = sign + pct.toFixed(1) + '%';
@@ -1650,7 +1680,7 @@ function showResult(entry) {
 
   const predEl = document.getElementById('res-predicted');
   predEl.textContent = entry.predictedMs != null ? formatDuration(entry.predictedMs) : '—';
-  predEl.classList.toggle('voided', pct == null);
+  predEl.classList.toggle('voided', pct == null && entry.predictedMs != null);
   document.getElementById('res-actual').textContent = formatDuration(entry.actualMs);
   document.getElementById('res-start').textContent = formatTime(entry.startTime);
   document.getElementById('res-end').textContent = formatTime(entry.endTime);
@@ -1688,20 +1718,21 @@ function renderPaused() {
         <div>
           <div class="log-edit-label">Rename task</div>
           <input type="text" id="paused-rename-input" class="edit-input-task paused-rename-input" value="${escHtml(t.task)}" onkeydown="pausedRenameKeydown(event, ${t.id})">
-          ${t.voided ? '' : '<div class="paused-rename-note">renaming voids the estimate — this task will log as unplanned</div>'}
+          ${t.voided || t.predictedMs == null ? '' : '<div class="paused-rename-note">renaming voids the estimate — this task will log as unplanned</div>'}
           <div class="btn-group">
             <button class="btn btn-tiny" onclick="cancelPausedRename()">Cancel</button>
-            <button class="btn btn-tiny ${t.voided ? 'accent' : 'danger'}" onclick="savePausedRename(${t.id})">${t.voided ? 'Rename' : 'Rename & void est.'}</button>
+            <button class="btn btn-tiny ${t.voided || t.predictedMs == null ? 'accent' : 'danger'}" onclick="savePausedRename(${t.id})">${t.voided || t.predictedMs == null ? 'Rename' : 'Rename & void est.'}</button>
           </div>
         </div>
       </div>`;
     }
     const elapsed = t.accumulatedMs;
-    const over = !t.voided && elapsed > t.predictedMs;
+    const over = !t.voided && t.predictedMs != null && elapsed > t.predictedMs;
     const elapsedStr = formatDuration(elapsed);
-    const predStr = formatDuration(t.predictedMs);
     const metaCls = over ? 'paused-over' : '';
-    const estPart = t.voided ? `<s class="voided-est">est. ${predStr}</s> voided` : `est. ${predStr}`;
+    const estPart = t.predictedMs == null ? 'no est.'
+      : t.voided ? `<s class="voided-est">est. ${formatDuration(t.predictedMs)}</s> voided`
+      : `est. ${formatDuration(t.predictedMs)}`;
     return `<div class="paused-entry">
       <div class="paused-info">
         <div class="paused-task">${escHtml(t.task)}</div>
@@ -1710,7 +1741,7 @@ function renderPaused() {
       <div class="paused-actions">
         <button class="btn btn-tiny accent" onclick="resumePausedTimer(${t.id})">Resume</button>
         <button class="btn btn-tiny" onclick="stopPausedTimer(${t.id})">Stop</button>
-        <button class="btn btn-tiny" onclick="startPausedRename(${t.id})" title="${t.voided ? 'Rename' : 'Rename — voids the estimate'}">✎</button>
+        <button class="btn btn-tiny" onclick="startPausedRename(${t.id})" title="${t.voided || t.predictedMs == null ? 'Rename' : 'Rename — voids the estimate'}">✎</button>
         <button class="btn btn-tiny danger" onclick="deletePausedTimer(${t.id})" title="Delete — discards without logging">✕</button>
       </div>
     </div>`;
@@ -1750,7 +1781,8 @@ function savePausedRename(id) {
   }
   if (name !== t.task) {
     t.task = name;
-    t.voided = true;
+    // A no-estimate timer has nothing to void — renaming is just a rename.
+    if (t.predictedMs != null) t.voided = true;
     savePaused();
   }
   editingPausedId = null;
@@ -1813,7 +1845,7 @@ function renderLogEntry(e, i) {
               <input type="number" id="edit-pred" class="edit-input-num" ${e.pctDiff == null ? (e.voided ? `value="${(e.predictedMs/60000).toFixed(2)}" disabled` : 'placeholder="—" disabled') : `value="${(e.predictedMs/60000).toFixed(2)}"`} min="0.01" step="0.01">
             </div>
             <div>
-              <div class="log-edit-label">${e.pctDiff == null && !e.voided ? 'Took (min, estimated)' : 'Actual (min)'}</div>
+              <div class="log-edit-label">${e.pctDiff == null && !e.voided && !e.tracked ? 'Took (min, estimated)' : 'Actual (min)'}</div>
               <input type="number" id="edit-actual" class="edit-input-num" value="${(e.actualMs/60000).toFixed(2)}" min="0.01" step="0.01">
             </div>
           </div>
@@ -1830,7 +1862,9 @@ function renderLogEntry(e, i) {
     if (e.pctDiff == null) {
       const tookPart = e.voided
         ? `<s>est. ${formatDuration(e.predictedMs)}</s> / actual ${formatDuration(e.actualMs)}`
-        : `took ~${formatDuration(e.actualMs)} (est.)`;
+        : e.tracked
+          ? `took ${formatDuration(e.actualMs)}`
+          : `took ~${formatDuration(e.actualMs)} (est.)`;
       return `<div class="log-entry" id="entry-${e.id}" onclick="editEntry(${i})">
         <div>
           <div class="log-task">${escHtml(e.task)}</div>
@@ -1868,9 +1902,10 @@ function saveEdit(i) {
   if (logs[i].pctDiff == null) {
     logs[i].task = task;
     logs[i].actualMs = actualMin * 60000;
-    // Voided entries were timer-measured: the start is real, so trimming the
-    // duration moves the end. Plain retrodictions keep their end and shift start.
-    if (logs[i].voided) logs[i].endTime = logs[i].startTime + logs[i].actualMs;
+    // Voided and tracked entries were timer-measured: the start is real, so
+    // trimming the duration moves the end. Plain retrodictions keep their end
+    // and shift start.
+    if (logs[i].voided || logs[i].tracked) logs[i].endTime = logs[i].startTime + logs[i].actualMs;
     else logs[i].startTime = logs[i].endTime - logs[i].actualMs;
   } else {
     const predMin = parseFloat(document.getElementById('edit-pred').value);
@@ -1965,7 +2000,9 @@ function buildSummaryText(day, finished, paused, includeItems) {
       if (e.voided) {
         lines.push(`• ${e.task} — ${formatDurationHuman(e.actualMs)} (voided est. ${formatDurationHuman(e.predictedMs)})`);
       } else if (e.pctDiff == null) {
-        lines.push(`• ${e.task} — ~${formatDurationHuman(e.actualMs)} (unplanned, duration estimated)`);
+        lines.push(e.tracked
+          ? `• ${e.task} — ${formatDurationHuman(e.actualMs)} (unplanned)`
+          : `• ${e.task} — ~${formatDurationHuman(e.actualMs)} (unplanned, duration estimated)`);
       } else {
         const sign = e.pctDiff > 0 ? '+' : '';
         lines.push(`• ${e.task} — ${formatDurationHuman(e.actualMs)} (est. ${formatDurationHuman(e.predictedMs)}, ${sign}${e.pctDiff.toFixed(0)}%)`);
@@ -1975,9 +2012,11 @@ function buildSummaryText(day, finished, paused, includeItems) {
     if (paused.length) {
       lines.push('*Not Finished*');
       paused.slice().sort((a, b) => a.startTime - b.startTime).forEach(e => {
-        lines.push(e.voided
-          ? `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. voided)`
-          : `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. ${formatDurationHuman(e.predictedMs)})`);
+        lines.push(e.predictedMs == null
+          ? `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (no estimate)`
+          : e.voided
+            ? `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. voided)`
+            : `• ${e.task} — ${formatDurationHuman(e.accumulatedMs)} so far (est. ${formatDurationHuman(e.predictedMs)})`);
       });
       lines.push('');
     }
@@ -2518,7 +2557,8 @@ function restoreActiveTimer() {
   if (!raw) return;
   try {
     const t = JSON.parse(raw);
-    if (!t || !t.task || !(finiteOrNull(t.predictedMs) > 0)) return;
+    if (!t || !t.task) return;
+    if (t.predictedMs !== null && !(finiteOrNull(t.predictedMs) > 0)) return;
     activeTimer = t;
     activeTimer.task = String(activeTimer.task);
     activeTimer.voided = activeTimer.voided === true;
@@ -2783,7 +2823,9 @@ function postTaskToSlack(entry) {
   if (entry.voided) {
     text = `${entry.task} — ${formatDurationHuman(entry.actualMs)} (voided est. ${formatDurationHuman(entry.predictedMs)})`;
   } else if (entry.pctDiff == null) {
-    text = `${entry.task} — ~${formatDurationHuman(entry.actualMs)} (unplanned)`;
+    text = entry.tracked
+      ? `${entry.task} — ${formatDurationHuman(entry.actualMs)} (unplanned)`
+      : `${entry.task} — ~${formatDurationHuman(entry.actualMs)} (unplanned)`;
   } else {
     const sign = entry.pctDiff > 0 ? '+' : '';
     text = `${entry.task} — ${formatDurationHuman(entry.actualMs)} (est. ${formatDurationHuman(entry.predictedMs)}, ${sign}${entry.pctDiff.toFixed(0)}%)`;
