@@ -1,3 +1,11 @@
+> [!IMPORTANT]
+> **This repository has moved.** meridian is now part of [**aristeia**](https://github.com/DrakeMorrison/aristeia), a consolidated suite of self-improvement PWAs.
+>
+> - Current source: <https://github.com/DrakeMorrison/aristeia/tree/main/meridian>
+> - Live app: <https://drakemorrison.github.io/aristeia/meridian/>
+>
+> Full git history was carried over. This repository is kept for reference and will no longer be updated.
+
 # Meridian
 
 **Time tracking and estimation calibration.**
